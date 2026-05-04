@@ -1,0 +1,17 @@
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# AWS
+*.pem

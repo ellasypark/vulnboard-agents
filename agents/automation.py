@@ -6,14 +6,20 @@ Automation Agent
 """
 
 import json
-import boto3
+import os
 import time
+import boto3
 from datetime import datetime, timezone
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv())
 
 # ── 설정 ──────────────────────────────────────────────
-REGION = "ap-northeast-2"
-WAF_ARN = "arn:aws:wafv2:ap-northeast-2:683123960885:regional/webacl/CreatedByALB-vulnboard-alb/db5db7cb-bba8-44df-840f-ae4243dc1d93"
-PENDING_BLOCKS_TABLE = "pending_blocks"  # DynamoDB 테이블 (승인 대기 목록)
+REGION = os.environ.get("AWS_REGION", "ap-northeast-2")
+WAF_ARN = os.environ.get("WAF_ARN")
+WAF_NAME = os.environ.get("WAF_NAME", "CreatedByALB-vulnboard-alb")
+WAF_ID = os.environ.get("WAF_ID", "")
+PENDING_BLOCKS_TABLE = os.environ.get("PENDING_BLOCKS_TABLE", "pending_blocks")
 
 waf = boto3.client("wafv2", region_name=REGION)
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
@@ -21,14 +27,25 @@ dynamodb = boto3.resource("dynamodb", region_name=REGION)
 
 # ── WAF Custom Rule 적용 ──────────────────────────────────────────────
 
-def get_waf_lock_token() -> str:
+def get_waf_lock_token():
     """WAF 업데이트에 필요한 lock token 가져오기"""
     response = waf.get_web_acl(
-        Name="CreatedByALB-vulnboard-alb",
+        Name=WAF_NAME,
         Scope="REGIONAL",
-        Id="db5db7cb-bba8-44df-840f-ae4243dc1d93"
+        Id=WAF_ID
     )
     return response["LockToken"], response["WebACL"]
+
+
+def create_ip_set(ip: str, name: str) -> str:
+    """WAF IP Set 생성 후 ARN 반환"""
+    response = waf.create_ip_set(
+        Name=name,
+        Scope="REGIONAL",
+        IPAddressVersion="IPV4",
+        Addresses=[f"{ip}/32"]
+    )
+    return response["Summary"]["ARN"]
 
 
 def block_by_ip(ip: str, reason: str) -> bool:
@@ -36,9 +53,7 @@ def block_by_ip(ip: str, reason: str) -> bool:
     try:
         lock_token, web_acl = get_waf_lock_token()
         existing_rules = web_acl.get("Rules", [])
-
         rule_name = f"Block-IP-{ip.replace('.', '-')}"
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
         new_rule = {
             "Name": rule_name,
@@ -57,9 +72,9 @@ def block_by_ip(ip: str, reason: str) -> bool:
         }
 
         waf.update_web_acl(
-            Name="CreatedByALB-vulnboard-alb",
+            Name=WAF_NAME,
             Scope="REGIONAL",
-            Id="db5db7cb-bba8-44df-840f-ae4243dc1d93",
+            Id=WAF_ID,
             DefaultAction=web_acl["DefaultAction"],
             Rules=existing_rules + [new_rule],
             VisibilityConfig=web_acl["VisibilityConfig"],
@@ -72,23 +87,11 @@ def block_by_ip(ip: str, reason: str) -> bool:
         return False
 
 
-def create_ip_set(ip: str, name: str) -> str:
-    """WAF IP Set 생성 후 ARN 반환"""
-    response = waf.create_ip_set(
-        Name=name,
-        Scope="REGIONAL",
-        IPAddressVersion="IPV4",
-        Addresses=[f"{ip}/32"]
-    )
-    return response["Summary"]["ARN"]
-
-
 def block_by_pattern(pattern: str, reason: str) -> bool:
     """패턴 기반 WAF Custom Rule 추가 (User-Agent, URI 등)"""
     try:
         lock_token, web_acl = get_waf_lock_token()
         existing_rules = web_acl.get("Rules", [])
-
         rule_name = f"Block-Pattern-{int(time.time())}"
 
         new_rule = {
@@ -111,9 +114,9 @@ def block_by_pattern(pattern: str, reason: str) -> bool:
         }
 
         waf.update_web_acl(
-            Name="CreatedByALB-vulnboard-alb",
+            Name=WAF_NAME,
             Scope="REGIONAL",
-            Id="db5db7cb-bba8-44df-840f-ae4243dc1d93",
+            Id=WAF_ID,
             DefaultAction=web_acl["DefaultAction"],
             Rules=existing_rules + [new_rule],
             VisibilityConfig=web_acl["VisibilityConfig"],
@@ -136,7 +139,6 @@ def save_pending_block(orchestrator_result: dict) -> str:
     table = dynamodb.Table(PENDING_BLOCKS_TABLE)
     decision = orchestrator_result["decision"]
     log = orchestrator_result["log"]
-
     item_id = f"{log['ip']}_{int(time.time())}"
 
     table.put_item(Item={
@@ -163,10 +165,9 @@ def approve_block(item_id: str) -> bool:
     WAF Custom Rule 적용 후 DynamoDB 상태 업데이트
     """
     table = dynamodb.Table(PENDING_BLOCKS_TABLE)
-
-    # DynamoDB에서 대기 항목 조회
     response = table.get_item(Key={"id": item_id})
     item = response.get("Item")
+
     if not item:
         print(f"[Automation] 항목 없음: {item_id}")
         return False
@@ -175,14 +176,12 @@ def approve_block(item_id: str) -> bool:
     block_value = item["block_value"]
     reason = item["reason"]
 
-    # WAF 규칙 적용
     success = False
     if block_type == "IP":
         success = block_by_ip(block_value, reason)
     elif block_type == "PATTERN":
         success = block_by_pattern(block_value, reason)
 
-    # 상태 업데이트
     table.update_item(
         Key={"id": item_id},
         UpdateExpression="SET #s = :s",
@@ -228,7 +227,6 @@ def lambda_handler(event, context):
         print("[Automation] 차단 불필요 - 무시")
         return {"status": "SKIPPED"}
 
-    # 승인 대기 목록에 저장 (대시보드에서 팝업으로 표시)
     item_id = save_pending_block(event)
 
     return {
@@ -243,7 +241,6 @@ def lambda_handler(event, context):
 
 # ── 로컬 테스트 ──────────────────────────────────────────────
 if __name__ == "__main__":
-    # Orchestrator 결과 샘플
     sample_result = {
         "log": {
             "timestamp": "2026-05-04T04:37:12+00:00",

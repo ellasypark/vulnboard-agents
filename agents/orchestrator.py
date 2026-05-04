@@ -6,15 +6,18 @@ Orchestrator Agent
 """
 
 import json
-import boto3
 import os
+import boto3
 from datetime import datetime, timezone
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv())
 
 # ── 설정 ──────────────────────────────────────────────
-REGION = "ap-northeast-2"
-S3_BUCKET = "vulnboard-attack-logs"
-WAF_ARN = "arn:aws:wafv2:ap-northeast-2:683123960885:regional/webacl/CreatedByALB-vulnboard-alb/db5db7cb-bba8-44df-840f-ae4243dc1d93"
-BEDROCK_MODEL = "claude-sonnet-4-20250514"
+REGION = os.environ.get("AWS_REGION", "ap-northeast-2")
+S3_BUCKET = os.environ.get("S3_BUCKET", "vulnboard-attack-logs")
+WAF_ARN = os.environ.get("WAF_ARN")
+BEDROCK_MODEL = os.environ.get("BEDROCK_MODEL", "claude-sonnet-4-20250514")
 
 bedrock = boto3.client("bedrock-runtime", region_name=REGION)
 s3 = boto3.client("s3", region_name=REGION)
@@ -79,9 +82,7 @@ def orchestrate(log_data: dict) -> dict:
 """
     response_text = call_bedrock(prompt)
 
-    # JSON 파싱
     try:
-        # 코드블록 제거 후 파싱
         clean = response_text.strip().replace("```json", "").replace("```", "").strip()
         decision = json.loads(clean)
     except Exception:
@@ -111,21 +112,15 @@ def lambda_handler(event, context):
 
         print(f"[Orchestrator] 로그 수신: s3://{bucket}/{key}")
 
-        # S3에서 로그 읽기
         log_data = read_log_from_s3(bucket, key)
-
-        # 오케스트레이션 실행
         result = orchestrate(log_data)
 
         print(f"[Orchestrator] 최종 판단: {json.dumps(result['decision'], ensure_ascii=False)}")
-
-        # Automation Agent로 결과 전달 (Step Functions에서 자동 연결)
         return result
 
 
 # ── 로컬 테스트 ──────────────────────────────────────────────
 if __name__ == "__main__":
-    # 테스트용 샘플 로그
     sample_log = {
         "timestamp": "2026-05-04T04:37:12.613252+00:00",
         "ip": "1.208.179.255",
