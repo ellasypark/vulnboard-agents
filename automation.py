@@ -24,25 +24,6 @@ PENDING_BLOCKS_TABLE = os.environ.get("PENDING_BLOCKS_TABLE", "pending_blocks")
 waf = boto3.client("wafv2", region_name=REGION)
 dynamodb = boto3.resource("dynamodb", region_name=REGION)
 
-def ensure_table_exists():
-    """DynamoDB 테이블이 없으면 자동으로 생성합니다."""
-    try:
-        dynamodb.meta.client.describe_table(TableName=PENDING_BLOCKS_TABLE)
-    except dynamodb.meta.client.exceptions.ResourceNotFoundException:
-        print(f"[Automation] '{PENDING_BLOCKS_TABLE}' 테이블이 없어서 새로 생성합니다 (서울 리전)...")
-        table = dynamodb.create_table(
-            TableName=PENDING_BLOCKS_TABLE,
-            KeySchema=[{'AttributeName': 'id', 'KeyType': 'HASH'}],
-            AttributeDefinitions=[{'AttributeName': 'id', 'AttributeType': 'S'}],
-            BillingMode='PAY_PER_REQUEST'
-        )
-        # 테이블이 완전히 생성될 때까지 대기
-        table.meta.client.get_waiter('table_exists').wait(TableName=PENDING_BLOCKS_TABLE)
-        print("[Automation] 테이블 생성 완료!")
-
-# 스크립트가 실행될 때 무조건 한 번 테이블 상태를 체크하도록 호출
-ensure_table_exists()
-
 
 def ensure_table_exists():
     """DynamoDB 테이블이 없으면 자동으로 생성합니다."""
