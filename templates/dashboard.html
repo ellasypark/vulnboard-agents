@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WAF 보안 대시보드</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-card: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #6c757d;
+            --border-color: #e0e0e0;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+            --accent: #4a90e2;
+            --accent-hover: #3a7bc8;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --success: #5cb85c;
+            --info: #5bc0de;
+        }
+
+        body.dark-mode {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-card: #2d2d2d;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --border-color: #404040;
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: all 0.3s ease;
+        }
+
+        .header {
+            background: var(--bg-card);
+            padding: 1.5rem 2rem;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .theme-toggle {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .download-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .download-btn:hover {
+            background: #3a7bc8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .grid {
+            display: grid;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .map-container {
+            position: relative;
+            height: 300px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #geoMap {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .leaflet-container {
+            background: var(--bg-secondary);
+        }
+
+        .map-legend {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: var(--bg-card);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            z-index: 1000;
+            font-size: 0.85rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .rule-card {
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .rule-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+
+        .risk-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .risk-high {
+            background: rgba(231, 76, 60, 0.1);
+            color: var(--danger);
+        }
+
+        .risk-medium {
+            background: rgba(243, 156, 18, 0.1);
+            color: var(--warning);
+        }
+
+        .risk-low {
+            background: rgba(39, 174, 96, 0.1);
+            color: var(--success);
+        }
+
+        .table-container {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        th {
+            background: var(--bg-secondary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            position: sticky;
+            top: 0;
+        }
+
+        /* 테이블 컬럼 너비 조정 */
+        th:nth-child(1), td:nth-child(1) { width: 12%; min-width: 140px; } /* 발생일시 */
+        th:nth-child(2), td:nth-child(2) { width: 10%; min-width: 110px; } /* 소스 IP */
+        th:nth-child(3), td:nth-child(3) { width: 15%; min-width: 150px; } /* 목적 IP */
+        th:nth-child(4), td:nth-child(4) { width: 15%; min-width: 150px; } /* HTTP 요청 */
+        th:nth-child(5), td:nth-child(5) { width: 20%; min-width: 200px; max-width: 300px; } /* 요청 파라미터 */
+        th:nth-child(6), td:nth-child(6) { width: 8%; min-width: 80px; } /* HTTP 응답 */
+        th:nth-child(7), td:nth-child(7) { width: 12%; min-width: 120px; } /* 공격 유형 */
+        th:nth-child(8), td:nth-child(8) { width: 8%; min-width: 80px; } /* WAF 조치 */
+
+        td:nth-child(5) {
+            white-space: normal;
+            word-break: break-all;
+            max-height: 60px;
+            overflow: auto;
+        }
+
+        tr:hover {
+            background: var(--bg-secondary);
+        }
+
+        .popup {
+            position: fixed;
+            right: -600px;
+            top: 0;
+            width: 500px;
+            height: 100vh;
+            background: var(--bg-card);
+            box-shadow: -4px 0 20px rgba(0,0,0,0.2);
+            transition: right 0.3s ease;
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .popup.active {
+            right: 0;
+        }
+
+        .popup-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+            z-index: 10;
+        }
+
+        .popup-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        .popup-close:hover {
+            color: var(--danger);
+        }
+
+        .popup-content {
+            padding: 1.5rem;
+        }
+
+        .popup-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            position: sticky;
+            bottom: 0;
+            background: var(--bg-card);
+        }
+
+        .nav-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .detail-row {
+            margin-bottom: 1rem;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .detail-value {
+            color: var(--text-primary);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            z-index: 999;
+        }
+
+        .overlay.active {
+            display: block;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .page-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            background: var(--bg-card);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .page-btn:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .page-btn.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        @media (max-width: 1200px) {
+            .grid-3 {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .grid-3, .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .popup {
+                width: 100%;
+                right: -100%;
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .risk-chart-mini {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .risk-item {
+            flex: 1;
+            text-align: center;
+            padding: 1rem;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .risk-count {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .risk-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* 속도계 스타일 게이지 */
+        .gauge-container {
+            position: relative;
+            width: 200px;
+            height: 120px;
+            margin: 1rem auto;
+        }
+
+        .gauge-value {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .gauge-label {
+            position: absolute;
+            bottom: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* 룰 선택 버튼 */
+        .rule-actions {
+            margin-top: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+        }
+
+        .select-rule-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .select-rule-btn:hover {
+            background: var(--accent);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        .select-rule-btn.selected {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .compare-section {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .compare-btn {
+            padding: 1rem 2rem;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .compare-btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(74, 144, 226, 0.4);
+        }
+
+        .compare-btn:disabled {
+            background: var(--text-secondary);
+            cursor: not-allowed;
+            transform: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><i class="fas fa-shield-alt"></i> WAF 보안 대시보드</h1>
+        <div class="header-controls">
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <i class="fas fa-moon"></i> 테마 변경
+            </button>
+            <button class="download-btn" onclick="downloadReport()">
+                <i class="fas fa-download"></i> 보고서 다운로드
+            </button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 최상단: 지도, 시간대별 공격, 월별 공격 유형 -->
+        <div class="grid grid-3">
+            <div class="card">
+                <div class="card-title"><i class="fas fa-globe"></i> 지역별 트래픽</div>
+                <div class="map-container">
+                    <div id="geoMap"></div>
+                    <div class="map-legend" id="mapLegend">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem;">공격 빈도</div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #ff4444;"></div>
+                            <span>높음 (10+)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #ff8800;"></div>
+                            <span>중간 (5-9)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #ffcc00;"></div>
+                            <span>낮음 (1-4)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title"><i class="fas fa-clock"></i> 주간 시간대별 공격 현황</div>
+                <div class="chart-container">
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title"><i class="fas fa-chart-pie"></i> 월별 공격 유형</div>
+                <div class="chart-container">
+                    <canvas id="attackTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 중앙: 개선 전/후 룰 -->
+        <div class="grid grid-2">
+            <div class="card">
+                <div class="card-title"><i class="fas fa-exclamation-triangle"></i> 개선 전 룰</div>
+                <div id="beforeRuleContent" class="loading">로딩 중...</div>
+                <div class="rule-actions">
+                    <button class="select-rule-btn" id="selectBeforeBtn" onclick="selectRule('before')">
+                        <i class="fas fa-check-circle"></i> 이 룰 선택
+                    </button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title"><i class="fas fa-check-circle"></i> 개선 후 룰</div>
+                <div id="afterRuleContent" class="loading">로딩 중...</div>
+                <div class="rule-actions">
+                    <button class="select-rule-btn" id="selectAfterBtn" onclick="selectRule('after')">
+                        <i class="fas fa-check-circle"></i> 이 룰 선택
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 룰 비교 및 적용 섹션 -->
+        <div class="compare-section">
+            <h3 style="margin-bottom: 1rem;">선택한 룰을 WAF에 적용하시겠습니까?</h3>
+            <p id="selectedRuleInfo" style="margin-bottom: 1rem; color: var(--text-secondary);">
+                룰을 선택해주세요
+            </p>
+            <button class="compare-btn" id="applyRuleBtn" onclick="applySelectedRule()" disabled>
+                <i class="fas fa-shield-alt"></i> 선택한 룰 적용하기
+            </button>
+        </div>
+
+        <!-- 최하단: 로그 테이블 -->
+        <div class="card">
+            <div class="card-title"><i class="fas fa-list"></i> WAF 로그</div>
+            <div class="table-container">
+                <table id="logTable">
+                    <thead>
+                        <tr>
+                            <th>발생일시</th>
+                            <th>소스 IP</th>
+                            <th>목적 IP</th>
+                            <th>HTTP 요청</th>
+                            <th>요청 파라미터</th>
+                            <th>HTTP 응답</th>
+                            <th>공격 유형</th>
+                            <th>WAF 조치</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTableBody">
+                        <tr><td colspan="8" class="loading">로딩 중...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <!-- 팝업 -->
+    <div class="overlay" id="overlay" onclick="closePopup()"></div>
+    <div class="popup" id="popup">
+        <div class="popup-header">
+            <h2 id="popupTitle">룰 상세 정보</h2>
+            <button class="popup-close" onclick="closePopup()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="popup-content" id="popupContent">
+            <div class="loading">로딩 중...</div>
+        </div>
+        <div class="popup-footer">
+            <button class="nav-btn" id="prevBtn" onclick="navigateRule(-1)">
+                <i class="fas fa-chevron-left"></i> 이전
+            </button>
+            <button class="nav-btn" id="nextBtn" onclick="navigateRule(1)">
+                다음 <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let currentRuleType = 'before';
+        let currentRuleIndex = 0;
+        let rulesData = { before: [], after: [] };
+        let currentPage = 1;
+        let isDarkMode = false;
+        let geoMap = null;
+        let selectedRuleType = null;
+
+        // 국가 코드별 좌표 매핑
+        const countryCoordinates = {
+            'KR': [37.5665, 126.9780],  // 한국
+            'US': [37.0902, -95.7129],  // 미국
+            'CN': [35.8617, 104.1954],  // 중국
+            'JP': [36.2048, 138.2529],  // 일본
+            'RU': [61.5240, 105.3188],  // 러시아
+            'DE': [51.1657, 10.4515],   // 독일
+            'FR': [46.2276, 2.2137],    // 프랑스
+            'GB': [55.3781, -3.4360],   // 영국
+            'BR': [-14.2350, -51.9253], // 브라질
+            'IN': [20.5937, 78.9629],   // 인도
+            'CA': [56.1304, -106.3468], // 캐나다
+            'AU': [-25.2744, 133.7751], // 호주
+            'IT': [41.8719, 12.5674],   // 이탈리아
+            'ES': [40.4637, -3.7492],   // 스페인
+            'MX': [23.6345, -102.5528], // 멕시코
+            'NL': [52.1326, 5.2913],    // 네덜란드
+            'SE': [60.1282, 18.6435],   // 스웨덴
+            'PL': [51.9194, 19.1451],   // 폴란드
+            'TR': [38.9637, 35.2433],   // 터키
+            'ID': [-0.7893, 113.9213],  // 인도네시아
+            'Unknown': [0, 0]
+        };
+
+        // 국가 이름 매핑
+        const countryNames = {
+            'KR': '대한민국', 'US': '미국', 'CN': '중국', 'JP': '일본',
+            'RU': '러시아', 'DE': '독일', 'FR': '프랑스', 'GB': '영국',
+            'BR': '브라질', 'IN': '인도', 'CA': '캐나다', 'AU': '호주',
+            'IT': '이탈리아', 'ES': '스페인', 'MX': '멕시코', 'NL': '네덜란드',
+            'SE': '스웨덴', 'PL': '폴란드', 'TR': '터키', 'ID': '인도네시아',
+            'Unknown': '알 수 없음'
+        };
+
+        // 테마 토글
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('dark-mode');
+            
+            fetch('/api/theme', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: isDarkMode ? 'dark' : 'light' })
+            });
+
+            // 차트와 지도 다시 그리기
+            loadAllData();
+        }
+
+        // 보고서 다운로드
+        function downloadReport() {
+            window.location.href = '/api/download-report';
+        }
+
+        // 룰 선택
+        function selectRule(type) {
+            selectedRuleType = type;
+            
+            // 버튼 스타일 업데이트
+            document.getElementById('selectBeforeBtn').classList.remove('selected');
+            document.getElementById('selectAfterBtn').classList.remove('selected');
+            
+            if (type === 'before') {
+                document.getElementById('selectBeforeBtn').classList.add('selected');
+                document.getElementById('selectedRuleInfo').innerHTML = 
+                    '<i class="fas fa-exclamation-triangle"></i> <strong>개선 전 룰</strong>이 선택되었습니다.';
+            } else {
+                document.getElementById('selectAfterBtn').classList.add('selected');
+                document.getElementById('selectedRuleInfo').innerHTML = 
+                    '<i class="fas fa-check-circle"></i> <strong>개선 후 룰</strong>이 선택되었습니다. (권장)';
+            }
+            
+            document.getElementById('applyRuleBtn').disabled = false;
+        }
+
+        // 선택한 룰 적용
+        function applySelectedRule() {
+            if (!selectedRuleType) {
+                alert('룰을 먼저 선택해주세요.');
+                return;
+            }
+            
+            const ruleName = selectedRuleType === 'before' ? '개선 전 룰' : '개선 후 룰';
+            const confirmed = confirm(`${ruleName}을(를) WAF에 적용하시겠습니까?\n\n이 작업은 실제 WAF 설정을 변경합니다.`);
+            
+            if (confirmed) {
+                // 실제 API 호출 (구현 필요)
+                alert(`✅ ${ruleName}이(가) 성공적으로 적용되었습니다!`);
+                
+                // 로그 추가 (선택사항)
+                console.log(`Applied rule type: ${selectedRuleType}`);
+            }
+        }
+
+        // 속도계 게이지 그리기
+        function drawGauge(canvasId, value, maxValue = 100) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height - 20;
+            const radius = 80;
+            
+            // 배경 호 그리기
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI, false);
+            ctx.lineWidth = 20;
+            ctx.strokeStyle = isDarkMode ? '#404040' : '#e0e0e0';
+            ctx.stroke();
+            
+            // 값에 따른 색상 결정
+            const percentage = (value / maxValue) * 100;
+            let color;
+            if (percentage >= 70) {
+                color = '#e74c3c'; // 빨강 (높음)
+            } else if (percentage >= 40) {
+                color = '#f39c12'; // 주황 (중간)
+            } else {
+                color = '#27ae60'; // 초록 (낮음)
+            }
+            
+            // 값 호 그리기
+            const endAngle = Math.PI + (Math.PI * (value / maxValue));
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, endAngle, false);
+            ctx.lineWidth = 20;
+            ctx.strokeStyle = color;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // 중앙 값 표시
+            ctx.fillStyle = isDarkMode ? '#ffffff' : '#1a1a1a';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(Math.round(percentage) + '%', centerX, centerY - 10);
+            
+            // 라벨
+            ctx.font = '14px Arial';
+            ctx.fillStyle = isDarkMode ? '#b0b0b0' : '#6c757d';
+            ctx.fillText('위험도', centerX, centerY + 15);
+        }
+
+        // 팝업 열기 (수정 - 작동하도록)
+        function showRulePopup(type, index) {
+            currentRuleType = type;
+            currentRuleIndex = index;
+            
+            const rules = rulesData[type];
+            if (!rules || rules.length === 0) {
+                alert('표시할 룰이 없습니다.');
+                return;
+            }
+            
+            if (index < 0 || index >= rules.length) {
+                console.error('Invalid rule index:', index);
+                return;
+            }
+            
+            const rule = rules[index];
+            
+            document.getElementById('popupTitle').innerHTML = 
+                `<i class="fas fa-${type === 'before' ? 'exclamation-triangle' : 'check-circle'}"></i> ${type === 'before' ? '개선 전' : '개선 후'} 룰 상세`;
+            
+            document.getElementById('popupContent').innerHTML = `
+                <div class="detail-row">
+                    <div class="detail-label">룰 이름</div>
+                    <div class="detail-value">${rule.name || 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">위험도</div>
+                    <div class="detail-value">
+                        <span class="risk-badge risk-${(rule.risk_level || 'MEDIUM').toLowerCase()}">${rule.risk_level || 'MEDIUM'}</span>
+                        <span style="margin-left: 1rem;">위험 점수: ${rule.risk_score || 0}/100</span>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">일시</div>
+                    <div class="detail-value">${rule.timestamp ? new Date(rule.timestamp).toLocaleString('ko-KR') : 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">대상</div>
+                    <div class="detail-value">${rule.target_ip || 'N/A'} / ${rule.target_country || 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">유형</div>
+                    <div class="detail-value"><strong>${rule.attack_type || 'N/A'}</strong></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">설명</div>
+                    <div class="detail-value">${rule.attack_description || 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">원인 (WAF 로그)</div>
+                    <div class="detail-value" style="word-break: break-all;">${rule.cause || 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">조치 방안 (WAF 룰)</div>
+                    <div class="detail-value">${rule.action || 'N/A'}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">영향도</div>
+                    <div class="detail-value">${rule.impact || 'N/A'}</div>
+                </div>
+                ${rule.expected_effect ? `
+                <div class="detail-row">
+                    <div class="detail-label">기대 효과</div>
+                    <div class="detail-value" style="color: var(--accent); font-weight: 600;">${rule.expected_effect}</div>
+                </div>
+                ` : ''}
+            `;
+            
+            // 네비게이션 버튼 상태 업데이트
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            
+            if (prevBtn) prevBtn.disabled = index === 0;
+            if (nextBtn) nextBtn.disabled = index === rules.length - 1;
+            
+            // 팝업 표시
+            const popup = document.getElementById('popup');
+            const overlay = document.getElementById('overlay');
+            
+            if (popup) popup.classList.add('active');
+            if (overlay) overlay.classList.add('active');
+            
+            console.log('Popup opened:', type, index, rule);
+        }
+
+        // 팝업 닫기
+        function closePopup() {
+            const popup = document.getElementById('popup');
+            const overlay = document.getElementById('overlay');
+            
+            if (popup) popup.classList.remove('active');
+            if (overlay) overlay.classList.remove('active');
+        }
+
+        // 룰 네비게이션
+        function navigateRule(direction) {
+            const newIndex = currentRuleIndex + direction;
+            const rules = rulesData[currentRuleType];
+            
+            if (newIndex >= 0 && newIndex < rules.length) {
+                showRulePopup(currentRuleType, newIndex);
+            }
+        }
+        function showRulePopup(type, index) {
+            currentRuleType = type;
+            currentRuleIndex = index;
+            
+            const rules = rulesData[type];
+            if (!rules || rules.length === 0) return;
+            
+            const rule = rules[index];
+            
+            document.getElementById('popupTitle').innerHTML = 
+                `<i class="fas fa-${type === 'before' ? 'exclamation-triangle' : 'check-circle'}"></i> ${type === 'before' ? '개선 전' : '개선 후'} 룰 상세`;
+            
+            document.getElementById('popupContent').innerHTML = `
+                <div class="detail-row">
+                    <div class="detail-label">룰 이름</div>
+                    <div class="detail-value">${rule.name}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">위험도</div>
+                    <div class="detail-value">
+                        <span class="risk-badge risk-${rule.risk_level.toLowerCase()}">${rule.risk_level}</span>
+                        <span style="margin-left: 1rem;">위험 점수: ${rule.risk_score}/100</span>
+                    </div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">일시</div>
+                    <div class="detail-value">${new Date(rule.timestamp).toLocaleString('ko-KR')}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">대상</div>
+                    <div class="detail-value">${rule.target_ip} / ${rule.target_country}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">유형</div>
+                    <div class="detail-value"><strong>${rule.attack_type}</strong></div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">설명</div>
+                    <div class="detail-value">${rule.attack_description}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">원인 (WAF 로그)</div>
+                    <div class="detail-value">${rule.cause}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">조치 방안 (WAF 룰)</div>
+                    <div class="detail-value">${rule.action}</div>
+                </div>
+                <div class="detail-row">
+                    <div class="detail-label">영향도</div>
+                    <div class="detail-value">${rule.impact}</div>
+                </div>
+                ${rule.expected_effect ? `
+                <div class="detail-row">
+                    <div class="detail-label">기대 효과</div>
+                    <div class="detail-value" style="color: var(--success); font-weight: 600;">${rule.expected_effect}</div>
+                </div>
+                ` : ''}
+            `;
+            
+            document.getElementById('prevBtn').disabled = index === 0;
+            document.getElementById('nextBtn').disabled = index === rules.length - 1;
+            
+            document.getElementById('popup').classList.add('active');
+            document.getElementById('overlay').classList.add('active');
+        }
+
+        // 팝업 닫기
+        function closePopup() {
+            document.getElementById('popup').classList.remove('active');
+            document.getElementById('overlay').classList.remove('active');
+        }
+
+        // 룰 네비게이션
+        function navigateRule(direction) {
+            const newIndex = currentRuleIndex + direction;
+            const rules = rulesData[currentRuleType];
+            
+            if (newIndex >= 0 && newIndex < rules.length) {
+                showRulePopup(currentRuleType, newIndex);
+            }
+        }
+
+        // 지역별 트래픽 지도
+        async function loadGeoMap() {
+            const response = await fetch('/api/geographic-data');
+            const data = await response.json();
+            
+            // 기존 지도가 있으면 제거
+            if (geoMap) {
+                geoMap.remove();
+            }
+            
+            // Leaflet 지도 초기화
+            geoMap = L.map('geoMap', {
+                center: [30, 0],
+                zoom: 2,
+                minZoom: 2,
+                maxZoom: 6,
+                worldCopyJump: true
+            });
+            
+            // 타일 레이어 추가 (다크모드 지원)
+            const tileUrl = isDarkMode 
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+            
+            L.tileLayer(tileUrl, {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(geoMap);
+            
+            // 마커 추가
+            Object.entries(data).forEach(([country, count]) => {
+                const coords = countryCoordinates[country] || countryCoordinates['Unknown'];
+                if (coords[0] === 0 && coords[1] === 0) return; // Unknown 제외
+                
+                // 공격 빈도에 따른 색상 결정
+                let color = '#ffcc00'; // 낮음
+                let radius = 8;
+                if (count >= 10) {
+                    color = '#ff4444'; // 높음
+                    radius = 15;
+                } else if (count >= 5) {
+                    color = '#ff8800'; // 중간
+                    radius = 12;
+                }
+                
+                // 원형 마커 생성
+                const circle = L.circleMarker(coords, {
+                    radius: radius,
+                    fillColor: color,
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.7
+                }).addTo(geoMap);
+                
+                // 팝업 추가
+                const countryName = countryNames[country] || country;
+                circle.bindPopup(`
+                    <div style="text-align: center; padding: 5px;">
+                        <strong>${countryName}</strong><br>
+                        공격 횟수: <span style="color: ${color}; font-weight: bold;">${count}</span>
+                    </div>
+                `);
+                
+                // 호버 효과
+                circle.on('mouseover', function() {
+                    this.setStyle({ fillOpacity: 1, radius: radius + 3 });
+                });
+                circle.on('mouseout', function() {
+                    this.setStyle({ fillOpacity: 0.7, radius: radius });
+                });
+            });
+        }
+
+        // 시간대별 공격 차트
+        async function loadHourlyChart() {
+            const response = await fetch('/api/hourly-attacks');
+            const data = await response.json();
+            
+            const ctx = document.getElementById('hourlyChart').getContext('2d');
+            const days = Object.keys(data);
+            const colors = ['#e74c3c', '#f39c12', '#27ae60', '#3498db', '#9b59b6', '#1abc9c', '#34495e'];
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${i}시`),
+                    datasets: days.map((day, idx) => ({
+                        label: day,
+                        data: data[day],
+                        borderColor: colors[idx],
+                        backgroundColor: colors[idx] + '20',
+                        tension: 0.4
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        // 공격 유형 차트
+        async function loadAttackTypeChart() {
+            const response = await fetch('/api/monthly-attack-types');
+            const data = await response.json();
+            
+            const ctx = document.getElementById('attackTypeChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(data),
+                    datasets: [{
+                        data: Object.values(data),
+                        backgroundColor: [
+                            '#e74c3c', '#f39c12', '#27ae60', '#3498db', '#9b59b6', '#1abc9c'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        // 개선 전 룰 로드
+        async function loadRulesBefore() {
+            const response = await fetch('/api/rules/before');
+            const data = await response.json();
+            rulesData.before = data.rules;
+            
+            // 평균 위험도 계산
+            const avgRisk = data.rules.reduce((sum, rule) => sum + rule.risk_score, 0) / data.rules.length;
+            
+            document.getElementById('beforeRuleContent').innerHTML = `
+                <div class="gauge-container">
+                    <canvas id="beforeGauge" width="200" height="120"></canvas>
+                </div>
+                <div style="text-align: center; margin-top: 1rem;">
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">
+                        총 ${data.rules.length}개의 룰 | 평균 위험도: ${Math.round(avgRisk)}%
+                    </p>
+                    <button onclick="showRulePopup('before', 0)" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        <i class="fas fa-info-circle"></i> 상세 보기
+                    </button>
+                </div>
+            `;
+            
+            // 게이지 그리기
+            setTimeout(() => drawGauge('beforeGauge', avgRisk, 100), 100);
+        }
+
+        // 개선 후 룰 로드
+        async function loadRulesAfter() {
+            const response = await fetch('/api/rules/after');
+            const data = await response.json();
+            rulesData.after = data.rules;
+            
+            // 평균 위험도 계산
+            const avgRisk = data.rules.reduce((sum, rule) => sum + rule.risk_score, 0) / data.rules.length;
+            
+            document.getElementById('afterRuleContent').innerHTML = `
+                <div class="gauge-container">
+                    <canvas id="afterGauge" width="200" height="120"></canvas>
+                </div>
+                <div style="text-align: center; margin-top: 1rem;">
+                    <p style="color: var(--text-secondary); font-size: 0.9rem;">
+                        총 ${data.rules.length}개의 룰 | 평균 위험도: ${Math.round(avgRisk)}%
+                    </p>
+                    <button onclick="showRulePopup('after', 0)" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: var(--success); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        <i class="fas fa-info-circle"></i> 상세 보기
+                    </button>
+                </div>
+            `;
+            
+            // 게이지 그리기
+            setTimeout(() => drawGauge('afterGauge', avgRisk, 100), 100);
+        }
+
+        // 로그 테이블 로드
+        async function loadLogs(page = 1) {
+            const response = await fetch(`/api/logs?page=${page}&per_page=20`);
+            const data = await response.json();
+            
+            const tbody = document.getElementById('logTableBody');
+            tbody.innerHTML = data.logs.map(log => `
+                <tr>
+                    <td>${new Date(log.timestamp).toLocaleString('ko-KR')}</td>
+                    <td>${log.source_ip}</td>
+                    <td>${log.dest_ip}</td>
+                    <td>${log.http_request}</td>
+                    <td title="${log.args || 'N/A'}">${log.args || 'N/A'}</td>
+                    <td>${log.http_response}</td>
+                    <td>${log.attack_type}</td>
+                    <td><span class="risk-badge risk-${log.waf_action === 'BLOCK' ? 'high' : log.waf_action === 'COUNT' ? 'medium' : 'low'}">${log.waf_action}</span></td>
+                </tr>
+            `).join('');
+            
+            // 페이지네이션
+            const totalPages = Math.ceil(data.total / data.per_page);
+            const pagination = document.getElementById('pagination');
+            pagination.innerHTML = '';
+            
+            for (let i = 1; i <= totalPages; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'page-btn' + (i === page ? ' active' : '');
+                btn.textContent = i;
+                btn.onclick = () => loadLogs(i);
+                pagination.appendChild(btn);
+            }
+            
+            currentPage = page;
+        }
+
+        // 모든 데이터 로드
+        async function loadAllData() {
+            await Promise.all([
+                loadGeoMap(),
+                loadHourlyChart(),
+                loadAttackTypeChart(),
+                loadRulesBefore(),
+                loadRulesAfter(),
+                loadLogs()
+            ]);
+        }
+
+        // 초기 로드
+        loadAllData();
+
+        // 키보드 단축키
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('popup').classList.contains('active')) {
+                if (e.key === 'Escape') closePopup();
+                if (e.key === 'ArrowLeft') navigateRule(-1);
+                if (e.key === 'ArrowRight') navigateRule(1);
+            }
+        });
+    </script>
+</body>
+</html>
