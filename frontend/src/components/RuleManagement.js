@@ -3,7 +3,6 @@ import axios from 'axios';
 import './RuleManagement.css';
 
 function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
-  // 상태 관리
   const [suggestedRules, setSuggestedRules] = useState([]);
   const [appliedRules, setAppliedRules] = useState([]);
   const [currentRisk, setCurrentRisk] = useState(75);
@@ -13,39 +12,62 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
   const [selectedRule, setSelectedRule] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
-  // 초기화
   useEffect(() => {
     if (aiRules && aiRules.length > 0) {
-      setSuggestedRules(aiRules);
+      // ★ AWS WAF 실제 상태 동기화 후 UI 초기화
+      syncWithAWS(aiRules);
       loadRiskCalculation();
     }
   }, [aiRules]);
 
-  // 위험도 계산 정보 로드
+  // ★ 핵심 추가: 페이지 로드 시 AWS WAF 실제 상태와 동기화
+  const syncWithAWS = async (rules) => {
+    try {
+      const response = await axios.get('/api/waf-sync');
+      if (response.data.success) {
+        const appliedRuleNames = response.data.applied_rules; // AWS에 실제 적용된 룰 이름 목록
+
+        // aiRules 중 AWS에 실제 적용된 것 → appliedRules
+        const applied = rules.filter(r => appliedRuleNames.includes(r.name));
+        // 나머지 → suggestedRules
+        const suggested = rules.filter(r => !appliedRuleNames.includes(r.name));
+
+        setAppliedRules(applied);
+        setSuggestedRules(suggested);
+
+        console.log(`[WAF Sync] 적용됨: ${applied.length}개, 제안: ${suggested.length}개`);
+      } else {
+        // 동기화 실패 시 전부 제안으로
+        setSuggestedRules(rules);
+        setAppliedRules([]);
+      }
+    } catch (error) {
+      console.error('AWS WAF 동기화 오류:', error);
+      // 오류 시 전부 제안으로
+      setSuggestedRules(rules);
+      setAppliedRules([]);
+    }
+  };
+
   const loadRiskCalculation = async () => {
     try {
       const response = await axios.get('/api/risk-calculation');
       if (response.data.success) {
-        // 새로운 범위: max (50~100), min (0~50)
         const maxRiskValue = Math.max(response.data.max_risk, 50);
         const minRiskValue = Math.max(response.data.min_risk, 0);
         const currentRiskValue = Math.max(response.data.current_risk, 50);
-        
+
         setMaxRisk(maxRiskValue);
         setMinRisk(minRiskValue);
         setCurrentRisk(currentRiskValue);
-        
-        // 룰별 위험도 감소량 맵 생성 (음수 방어)
+
         const reductionMap = {};
         response.data.risk_reduction_per_rule.forEach(item => {
-          // 절대 음수가 나오지 않도록 방어
           const reduction = Math.max(item.reduction, 0);
-          // 소수점 첫째 자리로 반올림
           reductionMap[item.rule_id] = Math.round(reduction * 10) / 10;
         });
         setRiskReductionMap(reductionMap);
-        
-        // 디버그 정보 출력
+
         console.log('위험도 계산 결과 (v3.0 - 룰 기반):', {
           max_risk: maxRiskValue,
           min_risk: minRiskValue,
@@ -64,11 +86,8 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     }
   };
 
-  // 카테고리에서 색상 가져오기 (도넛 그래프 색상과 완전히 통일)
   const getCategoryColor = (category) => {
     const colorMap = attackTypeColors || {};
-    
-    // 카테고리 → 공격 유형 매핑 (도넛 그래프와 동일한 색상 사용)
     const categoryToAttackType = {
       'IP Reputation': 'IP Reputation',
       'Common Vulnerabilities': 'Common Vulnerabilities',
@@ -79,52 +98,40 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
       'Rate Limiting': 'Rate Limiting',
       'Geo Blocking': 'Geo Blocking'
     };
-
-    // 매핑된 공격 유형의 색상 가져오기
     const attackType = categoryToAttackType[category];
     const color = attackType && colorMap[attackType] ? colorMap[attackType] : '#6b7280';
-    
-    // 디버그: 색상 매핑 확인
     if (process.env.NODE_ENV === 'development') {
       console.log(`카테고리 "${category}" → 공격 유형 "${attackType}" → 색상 "${color}"`);
     }
-
     return color;
   };
 
-  // 상세 보기 모달 열기
   const openModal = (rule) => {
     setSelectedRule(rule);
     setShowModal(true);
   };
 
-  // 모달 닫기
   const closeModal = () => {
     setShowModal(false);
     setSelectedRule(null);
   };
 
-  // 룰 적용 (AI 제안 -> 적용된 룰)
   const applyRule = async () => {
     if (!selectedRule) return;
 
     try {
       const response = await axios.post('/api/apply-rule', {
-        rule_id: selectedRule.id
+        rule_name: selectedRule.name
       });
 
       if (response.data.success) {
-        // 좌측에서 제거
         setSuggestedRules(prev => prev.filter(r => r.id !== selectedRule.id));
-        
-        // 중앙에 추가
         setAppliedRules(prev => [...prev, selectedRule]);
-        
-        // 위험도 감소 (뺄셈) - 음수 방어 및 소수점 처리
+
         const reduction = Math.max(riskReductionMap[selectedRule.id] || 0, 0);
         const newRisk = Math.max(currentRisk - reduction, minRisk);
         setCurrentRisk(Math.round(newRisk * 10) / 10);
-        
+
         closeModal();
         alert(`✅ ${selectedRule.name} 룰이 적용되었습니다.\n위험도 -${reduction.toFixed(1)}점 감소`);
       }
@@ -134,28 +141,23 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     }
   };
 
-  // 룰 제거 (적용된 룰 -> AI 제안)
   const removeRule = async (rule) => {
     const confirmed = window.confirm(`${rule.name} 룰을 제거하시겠습니까?`);
     if (!confirmed) return;
 
     try {
       const response = await axios.post('/api/remove-rule', {
-        rule_id: rule.id
+        rule_name: rule.name
       });
 
       if (response.data.success) {
-        // 중앙에서 제거
         setAppliedRules(prev => prev.filter(r => r.id !== rule.id));
-        
-        // 좌측에 추가
         setSuggestedRules(prev => [...prev, rule]);
-        
-        // 위험도 증가 (덧셈) - 음수 방어 및 소수점 처리
+
         const reduction = Math.max(riskReductionMap[rule.id] || 0, 0);
         const newRisk = Math.min(currentRisk + reduction, maxRisk);
         setCurrentRisk(Math.round(newRisk * 10) / 10);
-        
+
         alert(`✅ ${rule.name} 룰이 제거되었습니다.\n위험도 +${reduction.toFixed(1)}점 증가`);
       }
     } catch (error) {
@@ -164,7 +166,6 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     }
   };
 
-  // 위험도 레벨 계산
   const getRiskLevel = () => {
     if (currentRisk >= 70) return { level: 'HIGH', color: '#dc2626', label: '높음' };
     if (currentRisk >= 40) return { level: 'MEDIUM', color: '#f59e0b', label: '중간' };
@@ -195,12 +196,9 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                     <span className="rule-wcu">{rule.wcu} WCU</span>
                   </div>
                   <div className="rule-tags">
-                    <span 
-                      className="rule-tag" 
-                      style={{ 
-                        backgroundColor: getCategoryColor(rule.category),
-                        color: 'white'
-                      }}
+                    <span
+                      className="rule-tag"
+                      style={{ backgroundColor: getCategoryColor(rule.category), color: 'white' }}
                     >
                       {rule.category}
                     </span>
@@ -209,10 +207,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                     <span><i className="fas fa-exclamation-circle"></i> {rule.total_detections || 0}건 탐지</span>
                     <span className="risk-reduction">-{Math.max(riskReductionMap[rule.id] || 0, 0).toFixed(1)}점</span>
                   </div>
-                  <button 
-                    className="detail-btn"
-                    onClick={() => openModal(rule)}
-                  >
+                  <button className="detail-btn" onClick={() => openModal(rule)}>
                     <i className="fas fa-info-circle"></i> 상세 보기
                   </button>
                 </div>
@@ -238,21 +233,14 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                 <div key={rule.id} className="rule-card applied">
                   <div className="rule-header">
                     <span className="rule-name">{rule.name}</span>
-                    <button 
-                      className="remove-btn"
-                      onClick={() => removeRule(rule)}
-                      title="룰 제거"
-                    >
+                    <button className="remove-btn" onClick={() => removeRule(rule)} title="룰 제거">
                       <i className="fas fa-times"></i>
                     </button>
                   </div>
                   <div className="rule-tags">
-                    <span 
-                      className="rule-tag" 
-                      style={{ 
-                        backgroundColor: getCategoryColor(rule.category),
-                        color: 'white'
-                      }}
+                    <span
+                      className="rule-tag"
+                      style={{ backgroundColor: getCategoryColor(rule.category), color: 'white' }}
                     >
                       {rule.category}
                     </span>
@@ -272,7 +260,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
           </div>
         </div>
 
-        {/* 우측: 통합 종합 시스템 위험도 */}
+        {/* 우측: 종합 시스템 위험도 */}
         <div className="rule-column risk-gauge">
           <div className="column-header">
             <h3><i className="fas fa-tachometer-alt"></i> 종합 시스템 위험도</h3>
@@ -284,16 +272,16 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
               </div>
               <div className="risk-label">{riskInfo.label}</div>
             </div>
-            
+
             <div className="risk-bar-container">
               <div className="risk-bar-labels">
                 <span>최저 ({minRisk})</span>
                 <span>최고 ({maxRisk})</span>
               </div>
               <div className="risk-bar">
-                <div 
-                  className="risk-bar-fill" 
-                  style={{ 
+                <div
+                  className="risk-bar-fill"
+                  style={{
                     width: `${((currentRisk - minRisk) / (maxRisk - minRisk)) * 100}%`,
                     backgroundColor: riskInfo.color
                   }}
@@ -331,7 +319,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                 <i className="fas fa-times"></i>
               </button>
             </div>
-            
+
             <div className="modal-body">
               <div className="modal-section">
                 <h4>기본 정보</h4>
@@ -342,12 +330,9 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                   </div>
                   <div className="info-item">
                     <span className="info-label">카테고리</span>
-                    <span 
-                      className="rule-tag" 
-                      style={{ 
-                        backgroundColor: getCategoryColor(selectedRule.category),
-                        color: 'white'
-                      }}
+                    <span
+                      className="rule-tag"
+                      style={{ backgroundColor: getCategoryColor(selectedRule.category), color: 'white' }}
                     >
                       {selectedRule.category}
                     </span>
