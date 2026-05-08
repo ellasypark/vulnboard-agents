@@ -24,12 +24,14 @@ function AttackTypeChart({ data, isDarkMode }) {
   };
 
   return (
-    <div className="card">
-      <div className="card-title">
+    <div className="chart-wrapper">
+      <h2 className="section-title">
         <i className="fas fa-chart-pie"></i> 월별 공격 유형
-      </div>
-      <div style={{ height: '300px' }}>
-        <Doughnut data={chartData} options={options} />
+      </h2>
+      <div className="card">
+        <div style={{ height: '300px' }}>
+          <Doughnut data={chartData} options={options} />
+        </div>
       </div>
     </div>
   );

@@ -18,6 +18,42 @@
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* 차트 래퍼 - 타이틀을 박스 외부에 배치 */
+.chart-wrapper {
+  margin-bottom: 1.5rem;
+}
+
+/* 섹션 타이틀 - WAF 룰 관리와 동일한 스타일 */
+.section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.section-title i {
+  color: var(--accent);
+  font-size: 1.1rem;
+}
+
+.section-title .filter-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+  margin-left: 0.5rem;
+}
+
+/* 섹션 타이틀 행 (필터 버튼 포함) */
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
 @media (max-width: 1200px) {
   .grid-3 {
     grid-template-columns: repeat(2, 1fr);
@@ -27,5 +63,13 @@
 @media (max-width: 768px) {
   .grid-3, .grid-2 {
     grid-template-columns: 1fr;
+  }
+  
+  .section-title {
+    font-size: 1.1rem;
+  }
+  
+  .section-title i {
+    font-size: 1rem;
   }
 }

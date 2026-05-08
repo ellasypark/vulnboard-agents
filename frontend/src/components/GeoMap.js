@@ -113,31 +113,33 @@ function GeoMap({ data, isDarkMode }) {
   const colors = legend.colors || [];
 
   return (
-    <div className="card">
-      <div className="card-title">
+    <div className="chart-wrapper">
+      <h2 className="section-title">
         <i className="fas fa-globe"></i> 지역별 트래픽
-      </div>
-      <div className="map-container">
-        <div ref={mapRef} id="geoMap"></div>
-      </div>
-      
-      {/* 하단 범례 (빨간색 계열) */}
-      {ranges.length > 0 && (
-        <div className="map-legend-bottom">
-          <div className="legend-title">공격 빈도</div>
-          <div className="legend-scale">
-            {ranges.map((range, index) => (
-              <div key={index} className="legend-item-bottom">
-                <div 
-                  className="legend-color-box" 
-                  style={{ backgroundColor: colors[index] }}
-                ></div>
-                <span className="legend-label">{range}</span>
-              </div>
-            ))}
-          </div>
+      </h2>
+      <div className="card">
+        <div className="map-container">
+          <div ref={mapRef} id="geoMap"></div>
         </div>
-      )}
+        
+        {/* 하단 범례 (빨간색 계열) */}
+        {ranges.length > 0 && (
+          <div className="map-legend-bottom">
+            <div className="legend-title">공격 빈도</div>
+            <div className="legend-scale">
+              {ranges.map((range, index) => (
+                <div key={index} className="legend-item-bottom">
+                  <div 
+                    className="legend-color-box" 
+                    style={{ backgroundColor: colors[index] }}
+                  ></div>
+                  <span className="legend-label">{range}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

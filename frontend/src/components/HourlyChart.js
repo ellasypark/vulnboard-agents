@@ -79,12 +79,14 @@ function HourlyChart({ data, isDarkMode }) {
   };
 
   return (
-    <div className="card">
-      <div className="card-title">
+    <div className="chart-wrapper">
+      <h2 className="section-title">
         <i className="fas fa-chart-line"></i> 주간 공격 현황 (최근 7일)
-      </div>
-      <div style={{ height: '300px' }}>
-        <Line data={chartData} options={options} />
+      </h2>
+      <div className="card">
+        <div style={{ height: '300px' }}>
+          <Line data={chartData} options={options} />
+        </div>
       </div>
     </div>
   );

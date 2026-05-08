@@ -175,16 +175,16 @@ function LogTable({ logs }) {
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length;
 
   return (
-    <div className="card" ref={tableRef}>
-      <div className="card-title-row">
-        <div className="card-title">
+    <div className="chart-wrapper">
+      <div className="section-title-row">
+        <h2 className="section-title">
           <i className="fas fa-list"></i> WAF 로그
           {processedLogs.length !== logs?.length && (
             <span className="filter-count">
               ({processedLogs.length} / {logs?.length || 0})
             </span>
           )}
-        </div>
+        </h2>
         <button 
           className={`filter-toggle-btn ${showFilters ? 'active' : ''}`}
           onClick={() => setShowFilters(!showFilters)}
@@ -195,6 +195,7 @@ function LogTable({ logs }) {
           )}
         </button>
       </div>
+      <div className="card" ref={tableRef}>
 
       {/* 필터 패널 */}
       {showFilters && (
@@ -383,6 +384,7 @@ function LogTable({ logs }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

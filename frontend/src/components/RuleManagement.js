@@ -6,9 +6,9 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
   // 상태 관리
   const [suggestedRules, setSuggestedRules] = useState([]);
   const [appliedRules, setAppliedRules] = useState([]);
-  const [currentRisk, setCurrentRisk] = useState(100);
-  const [maxRisk, setMaxRisk] = useState(100);
-  const [minRisk, setMinRisk] = useState(15);
+  const [currentRisk, setCurrentRisk] = useState(75);
+  const [maxRisk, setMaxRisk] = useState(75);
+  const [minRisk, setMinRisk] = useState(25);
   const [riskReductionMap, setRiskReductionMap] = useState({});
   const [selectedRule, setSelectedRule] = useState(null);
   const [showModal, setShowModal] = useState(false);
@@ -26,38 +26,70 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     try {
       const response = await axios.get('/api/risk-calculation');
       if (response.data.success) {
-        setMaxRisk(response.data.max_risk);
-        setMinRisk(response.data.min_risk);
-        setCurrentRisk(response.data.current_risk);
+        // 새로운 범위: max (50~100), min (0~50)
+        const maxRiskValue = Math.max(response.data.max_risk, 50);
+        const minRiskValue = Math.max(response.data.min_risk, 0);
+        const currentRiskValue = Math.max(response.data.current_risk, 50);
         
-        // 룰별 위험도 감소량 맵 생성
+        setMaxRisk(maxRiskValue);
+        setMinRisk(minRiskValue);
+        setCurrentRisk(currentRiskValue);
+        
+        // 룰별 위험도 감소량 맵 생성 (음수 방어)
         const reductionMap = {};
         response.data.risk_reduction_per_rule.forEach(item => {
-          reductionMap[item.rule_id] = item.reduction;
+          // 절대 음수가 나오지 않도록 방어
+          const reduction = Math.max(item.reduction, 0);
+          // 소수점 첫째 자리로 반올림
+          reductionMap[item.rule_id] = Math.round(reduction * 10) / 10;
         });
         setRiskReductionMap(reductionMap);
+        
+        // 디버그 정보 출력
+        console.log('위험도 계산 결과 (v3.0 - 룰 기반):', {
+          max_risk: maxRiskValue,
+          min_risk: minRiskValue,
+          current_risk: currentRiskValue,
+          applied_safety_score: response.data.applied_safety_score,
+          potential_safety_score: response.data.potential_safety_score,
+          applied_rule_count: response.data.applied_rule_count,
+          suggested_rule_count: response.data.suggested_rule_count,
+          total_rule_count: response.data.total_rule_count,
+          calculation_method: response.data.calculation_method,
+          risk_reduction_map: reductionMap
+        });
       }
     } catch (error) {
       console.error('위험도 계산 로드 오류:', error);
     }
   };
 
-  // 카테고리에서 색상 가져오기
+  // 카테고리에서 색상 가져오기 (도넛 그래프 색상과 완전히 통일)
   const getCategoryColor = (category) => {
     const colorMap = attackTypeColors || {};
     
-    const keywordMap = {
-      'IP Reputation': colorMap['IP Reputation'] || '#3b82f6',
-      'Common Vulnerabilities': colorMap['Common Vulnerabilities'] || '#ec4899',
-      'Known Bad Inputs': colorMap['Known Bad Inputs'] || '#14b8a6',
-      'SQL Injection Protection': colorMap['SQL Injection'] || '#ef4444',
-      'Linux Protection': colorMap['Linux Protection'] || '#84cc16',
-      'Unix Protection': colorMap['Unix Protection'] || '#a3e635',
-      'Rate Limiting': colorMap['Rate Limiting'] || '#f43f5e',
-      'Geo Blocking': colorMap['Geo Blocking'] || '#8b5cf6'
+    // 카테고리 → 공격 유형 매핑 (도넛 그래프와 동일한 색상 사용)
+    const categoryToAttackType = {
+      'IP Reputation': 'IP Reputation',
+      'Common Vulnerabilities': 'Common Vulnerabilities',
+      'Known Bad Inputs': 'Known Bad Inputs',
+      'SQL Injection Protection': 'SQL Injection',
+      'Linux Protection': 'Linux Protection',
+      'Unix Protection': 'Unix Protection',
+      'Rate Limiting': 'Rate Limiting',
+      'Geo Blocking': 'Geo Blocking'
     };
 
-    return keywordMap[category] || '#6b7280';
+    // 매핑된 공격 유형의 색상 가져오기
+    const attackType = categoryToAttackType[category];
+    const color = attackType && colorMap[attackType] ? colorMap[attackType] : '#6b7280';
+    
+    // 디버그: 색상 매핑 확인
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`카테고리 "${category}" → 공격 유형 "${attackType}" → 색상 "${color}"`);
+    }
+
+    return color;
   };
 
   // 상세 보기 모달 열기
@@ -88,9 +120,10 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
         // 중앙에 추가
         setAppliedRules(prev => [...prev, selectedRule]);
         
-        // 위험도 감소 (뺄셈)
-        const reduction = riskReductionMap[selectedRule.id] || 0;
-        setCurrentRisk(prev => Math.max(prev - reduction, minRisk));
+        // 위험도 감소 (뺄셈) - 음수 방어 및 소수점 처리
+        const reduction = Math.max(riskReductionMap[selectedRule.id] || 0, 0);
+        const newRisk = Math.max(currentRisk - reduction, minRisk);
+        setCurrentRisk(Math.round(newRisk * 10) / 10);
         
         closeModal();
         alert(`✅ ${selectedRule.name} 룰이 적용되었습니다.\n위험도 -${reduction.toFixed(1)}점 감소`);
@@ -118,9 +151,10 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
         // 좌측에 추가
         setSuggestedRules(prev => [...prev, rule]);
         
-        // 위험도 증가 (덧셈)
-        const reduction = riskReductionMap[rule.id] || 0;
-        setCurrentRisk(prev => Math.min(prev + reduction, maxRisk));
+        // 위험도 증가 (덧셈) - 음수 방어 및 소수점 처리
+        const reduction = Math.max(riskReductionMap[rule.id] || 0, 0);
+        const newRisk = Math.min(currentRisk + reduction, maxRisk);
+        setCurrentRisk(Math.round(newRisk * 10) / 10);
         
         alert(`✅ ${rule.name} 룰이 제거되었습니다.\n위험도 +${reduction.toFixed(1)}점 증가`);
       }
@@ -173,7 +207,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                   </div>
                   <div className="rule-stats">
                     <span><i className="fas fa-exclamation-circle"></i> {rule.total_detections || 0}건 탐지</span>
-                    <span className="risk-reduction">-{riskReductionMap[rule.id]?.toFixed(1) || 0}점</span>
+                    <span className="risk-reduction">-{Math.max(riskReductionMap[rule.id] || 0, 0).toFixed(1)}점</span>
                   </div>
                   <button 
                     className="detail-btn"
@@ -238,10 +272,10 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
           </div>
         </div>
 
-        {/* 우측: 통합 실시간 위험도 */}
+        {/* 우측: 통합 종합 시스템 위험도 */}
         <div className="rule-column risk-gauge">
           <div className="column-header">
-            <h3><i className="fas fa-tachometer-alt"></i> 실시간 위험도</h3>
+            <h3><i className="fas fa-tachometer-alt"></i> 종합 시스템 위험도</h3>
           </div>
           <div className="risk-display">
             <div className="risk-circle" style={{ borderColor: riskInfo.color }}>
@@ -321,7 +355,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                   <div className="info-item">
                     <span className="info-label">위험도 감소</span>
                     <span className="info-value" style={{ color: '#10b981' }}>
-                      -{riskReductionMap[selectedRule.id]?.toFixed(1) || 0}점
+                      -{Math.max(riskReductionMap[selectedRule.id] || 0, 0).toFixed(1)}점
                     </span>
                   </div>
                 </div>

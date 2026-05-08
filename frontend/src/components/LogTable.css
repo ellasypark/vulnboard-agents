@@ -7,28 +7,6 @@
   transition: all 0.3s;
 }
 
-.card-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.card-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.filter-count {
-  font-size: 0.9rem;
-  color: #4a90e2;
-  font-weight: 500;
-}
-
 /* 필터 토글 버튼 */
 .filter-toggle-btn {
   background: #4a90e2;

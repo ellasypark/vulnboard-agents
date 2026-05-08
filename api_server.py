@@ -21,6 +21,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 import os
 from dotenv import load_dotenv
 
+# 위험도 계산 모듈 임포트
+from risk_calculator import get_risk_calculator
+
 # .env 파일 로드
 load_dotenv()
 
@@ -205,6 +208,7 @@ class DashboardDataStore:
     def get_geographic_data(self) -> Dict[str, Any]:
         """
         지역별 공격 데이터 및 상대적 빈도 인덱스 반환 (빨간색 계열)
+        범위는 5 또는 10의 배수로 깔끔하게 표시
         """
         geo_data = defaultdict(int)
         for log in self.logs:
@@ -237,24 +241,83 @@ class DashboardDataStore:
         high_threshold = sorted_counts[high_threshold_idx] if high_threshold_idx < len(sorted_counts) else max_count
         low_threshold = sorted_counts[low_threshold_idx] if low_threshold_idx < len(sorted_counts) else min_count
         
-        # 인덱스 범위 생성 (1, 5, 10, 20 단위) - 사용자 친화적인 숫자
-        def calculate_index_ranges(max_val):
-            """적절한 인덱스 범위 계산"""
-            if max_val <= 5:
+        # 인덱스 범위 생성 (5 또는 10의 배수로 깔끔하게)
+        def calculate_clean_ranges(max_val):
+            """
+            5 또는 10의 배수로 깔끔한 범위 계산
+            
+            규칙:
+            - 1~10: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+            - 11~50: 5 단위 (10, 20, 30, 40, 50)
+            - 51~100: 10 단위 (20, 40, 60, 80, 100)
+            - 101~500: 50 단위 (100, 200, 300, 400, 500)
+            - 501~1000: 100 단위 (200, 400, 600, 800, 1000)
+            - 1001~: 적절한 10의 거듭제곱 단위
+            """
+            import math
+            
+            if max_val <= 0:
                 return [1, 2, 3, 4, 5]
-            elif max_val <= 20:
-                return [1, 5, 10, 15, 20]
+            
+            # 1~10: 그대로 표시
+            if max_val <= 10:
+                return list(range(1, max_val + 1))
+            
+            # 11~50: 5 단위
             elif max_val <= 50:
-                return [1, 10, 20, 30, 40, 50]
+                # 최대값을 5의 배수로 올림
+                max_rounded = math.ceil(max_val / 5) * 5
+                step = max(5, max_rounded // 5)
+                ranges = [step * i for i in range(1, 6)]
+                # 마지막 값이 max_val보다 크거나 같도록 조정
+                if ranges[-1] < max_val:
+                    ranges[-1] = math.ceil(max_val / 5) * 5
+                return ranges
+            
+            # 51~100: 10 단위
             elif max_val <= 100:
-                return [1, 20, 40, 60, 80, 100]
+                max_rounded = math.ceil(max_val / 10) * 10
+                step = max(10, max_rounded // 5)
+                ranges = [step * i for i in range(1, 6)]
+                if ranges[-1] < max_val:
+                    ranges[-1] = math.ceil(max_val / 10) * 10
+                return ranges
+            
+            # 101~500: 50 단위
+            elif max_val <= 500:
+                max_rounded = math.ceil(max_val / 50) * 50
+                step = max(50, max_rounded // 5)
+                ranges = [step * i for i in range(1, 6)]
+                if ranges[-1] < max_val:
+                    ranges[-1] = math.ceil(max_val / 50) * 50
+                return ranges
+            
+            # 501~1000: 100 단위
+            elif max_val <= 1000:
+                max_rounded = math.ceil(max_val / 100) * 100
+                step = max(100, max_rounded // 5)
+                ranges = [step * i for i in range(1, 6)]
+                if ranges[-1] < max_val:
+                    ranges[-1] = math.ceil(max_val / 100) * 100
+                return ranges
+            
+            # 1001 이상: 10의 거듭제곱 단위
             else:
-                step = max_val // 5
-                return [step * i for i in range(1, 6)]
+                # 최대값의 자릿수 계산
+                magnitude = 10 ** (len(str(max_val)) - 1)  # 예: 1234 -> 1000
+                step_size = magnitude // 2  # 예: 1000 -> 500
+                
+                # 최대값을 step_size의 배수로 올림
+                max_rounded = math.ceil(max_val / step_size) * step_size
+                step = max(step_size, max_rounded // 5)
+                ranges = [step * i for i in range(1, 6)]
+                if ranges[-1] < max_val:
+                    ranges[-1] = math.ceil(max_val / step_size) * step_size
+                return ranges
         
-        index_ranges = calculate_index_ranges(max_count)
+        index_ranges = calculate_clean_ranges(max_count)
         
-        # 색상 매핑 (빨간색 계열로 변경 - 보안 경각심)
+        # 색상 매핑 (빨간색 계열 - 보안 경각심)
         colors = ['#fecaca', '#fca5a5', '#f87171', '#ef4444', '#dc2626']
         
         # 각 범위의 퍼센티지 계산
@@ -863,83 +926,87 @@ def remove_rule():
 @app.route('/api/risk-calculation', methods=['GET'])
 def get_risk_calculation():
     """
-    위험도 계산 정보 반환
+    위험도 계산 정보 반환 (v3.0 - 룰 기반 동적 분석)
     
-    계산 로직:
-    1. 현재 위험도 (최고 위험도): 아무 룰도 적용하지 않았을 때의 위험도 (100점 만점)
-    2. 최저 위험도: 모든 AI 추천 룰을 적용했을 때의 위험도
-    3. 각 룰의 위험도 감소 점수: WCU 기반 중요도에 따라 계산
-    4. 룰 적용/제거 시 위험도 덧셈/뺄셈
+    새로운 계산 로직:
+    1. 최고 위험도 (50~100): 적용된 룰의 개수와 안전도에 따라 동적 계산
+    2. 최저 위험도 (0~50): 모든 AI 추천 룰을 적용했을 때의 위험도
+    3. 각 룰의 위험도 감소 점수: 룰의 안전도 점수에 비례하여 배분
+    
+    가중치:
+    - 룰 개수: 20% (가중치 낮음)
+    - 룰 안전도: 80% (가중치 높음)
     """
     try:
-        # 1. 현재 위험도 계산 (최고 위험도)
-        # 로그 데이터 기반으로 실제 위험도 산정
+        # 위험도 계산기 인스턴스 가져오기
+        calculator = get_risk_calculator()
+        
+        # 현재 적용된 룰 목록 (초기에는 비어있음)
+        applied_rules = []
+        
+        # AI 제안 룰 목록
+        suggested_rules = data_store.rules_after
+        
+        # 총 로그 수
         total_logs = len(data_store.logs)
-        high_risk_logs = sum(1 for log in data_store.logs if log.get('risk_score', 0) >= 70)
-        medium_risk_logs = sum(1 for log in data_store.logs if 40 <= log.get('risk_score', 0) < 70)
         
-        # 위험도 계산: (고위험 로그 비율 * 100) + (중위험 로그 비율 * 50)
+        # 위험도 계산
+        result = calculator.calculate_risk_levels(
+            applied_rules=applied_rules,
+            suggested_rules=suggested_rules,
+            total_logs=total_logs
+        )
+        
+        # 로그 통계 정보 추가 (디버깅용)
         if total_logs > 0:
-            max_risk = min(100, round(
-                (high_risk_logs / total_logs * 100) + 
-                (medium_risk_logs / total_logs * 50)
-            ))
-            # 최소 50점 보장 (룰이 없으면 위험함)
-            max_risk = max(50, max_risk)
+            critical_logs = sum(1 for log in data_store.logs if log.get('risk_score', 0) >= 85)
+            high_risk_logs = sum(1 for log in data_store.logs if 70 <= log.get('risk_score', 0) < 85)
+            medium_risk_logs = sum(1 for log in data_store.logs if 40 <= log.get('risk_score', 0) < 70)
+            low_risk_logs = sum(1 for log in data_store.logs if 20 <= log.get('risk_score', 0) < 40)
+            
+            blocked_logs = sum(1 for log in data_store.logs if log.get('waf_action') == 'BLOCK')
+            count_logs = sum(1 for log in data_store.logs if log.get('waf_action') == 'COUNT')
+            allowed_logs = sum(1 for log in data_store.logs if log.get('waf_action') == 'ALLOW')
+            
+            excluded_types = ['Normal Traffic', 'Allowed Traffic', 'Debug Resource Request']
+            attack_logs = sum(1 for log in data_store.logs 
+                             if log.get('attack_type', 'Unknown') not in excluded_types)
+            attack_ratio = (attack_logs / total_logs * 100) if total_logs > 0 else 0
         else:
-            max_risk = 100  # 로그가 없으면 최대 위험도
+            critical_logs = high_risk_logs = medium_risk_logs = low_risk_logs = 0
+            blocked_logs = count_logs = allowed_logs = attack_logs = 0
+            attack_ratio = 0
         
-        # 2. 최저 위험도 계산 (모든 AI 추천 룰 적용 시)
-        # AI 룰을 모두 적용하면 위험도가 크게 감소
-        ai_rules = data_store.rules_after
-        total_wcu = sum(rule.get('wcu', 100) for rule in ai_rules)
-        
-        # WCU가 높을수록 더 많은 위협을 차단 -> 위험도 감소
-        # 전체 WCU 1500 이상이면 위험도를 15점까지 낮출 수 있음
-        if total_wcu >= 1500:
-            min_risk = 15
-        elif total_wcu >= 1000:
-            min_risk = 25
-        elif total_wcu >= 500:
-            min_risk = 35
-        else:
-            min_risk = 45
-        
-        # 3. 각 룰의 위험도 감소 점수 계산 (중요도 기반)
-        risk_reduction_per_rule = []
-        total_reduction = max_risk - min_risk  # 전체 감소 가능 범위
-        
-        for rule in ai_rules:
-            wcu = rule.get('wcu', 100)
-            detections = rule.get('total_detections', 0)
-            
-            # 중요도 계산: WCU (70%) + 탐지 건수 (30%)
-            wcu_weight = wcu / total_wcu if total_wcu > 0 else 0
-            detection_weight = detections / total_logs if total_logs > 0 else 0
-            
-            importance = (wcu_weight * 0.7) + (detection_weight * 0.3)
-            
-            # 해당 룰의 위험도 감소 점수
-            reduction = round(total_reduction * importance, 2)
-            
-            risk_reduction_per_rule.append({
-                'rule_id': rule['id'],
-                'reduction': reduction,
-                'importance': round(importance * 100, 1)  # 백분율
-            })
-        
+        # 응답 구성
         return jsonify({
             'success': True,
-            'max_risk': max_risk,
-            'min_risk': min_risk,
-            'current_risk': max_risk,  # 초기값 (아무 룰도 적용 안 함)
-            'risk_reduction_per_rule': risk_reduction_per_rule,
+            'max_risk': result['max_risk'],
+            'min_risk': result['min_risk'],
+            'current_risk': result['current_risk'],
+            'risk_reduction_per_rule': result['risk_reduction_per_rule'],
+            'applied_safety_score': result['applied_safety_score'],
+            'potential_safety_score': result['potential_safety_score'],
+            'applied_rule_count': result['applied_rule_count'],
+            'suggested_rule_count': result['suggested_rule_count'],
+            'total_rule_count': result['total_rule_count'],
+            'calculation_method': result['calculation_method'],
+            # 로그 통계 (디버깅용)
             'total_logs': total_logs,
-            'high_risk_logs': high_risk_logs
+            'critical_logs': critical_logs,
+            'high_risk_logs': high_risk_logs,
+            'medium_risk_logs': medium_risk_logs,
+            'low_risk_logs': low_risk_logs,
+            'blocked_logs': blocked_logs,
+            'count_logs': count_logs,
+            'allowed_logs': allowed_logs,
+            'attack_logs': attack_logs,
+            'attack_ratio': round(attack_ratio, 1)
         })
     
     except Exception as e:
         print(f"위험도 계산 오류: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e), 'success': False}), 500
 
 @app.route('/api/apply-rules', methods=['POST'])
