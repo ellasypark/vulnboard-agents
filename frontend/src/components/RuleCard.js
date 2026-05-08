@@ -63,44 +63,52 @@ function RuleCard({ title, icon, rules, type, selectedType, onSelect, onShowDeta
       <div className="card-title">
         <i className={`fas fa-${icon}`}></i> {title}
       </div>
-      <div className="gauge-container">
-        <canvas ref={canvasRef} width="200" height="120"></canvas>
+      
+      <div className="rule-card-layout">
+        {/* 왼쪽: 룰 목록 */}
+        <div className="rule-list-section">
+          <div className="rule-list-scroll">
+            {rules && rules.length > 0 ? (
+              rules.map((rule, index) => (
+                <div key={index} className="rule-item">
+                  <div className="rule-item-content">
+                    <div className="rule-item-name">{rule.name}</div>
+                    <div className="rule-item-info">
+                      {rule.category || rule.attack_type} • {rule.total_detections || 0}건 탐지
+                    </div>
+                  </div>
+                  <button 
+                    className="rule-detail-btn"
+                    onClick={() => onShowDetail(type, index)}
+                    title="상세 보기"
+                  >
+                    상세 보기
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="rule-item-empty">
+                룰이 없습니다
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 오른쪽: 게이지 차트 */}
+        <div className="rule-gauge-section">
+          <canvas ref={canvasRef} width="200" height="120"></canvas>
+          <div className="rule-stats">
+            <div className="rule-stat-item">
+              <span className="rule-stat-label">총 {rules?.length || 0}개 룰</span>
+            </div>
+            <div className="rule-stat-item">
+              <span className="rule-stat-label">평균 위험도: {Math.round(avgRisk)}%</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          총 {rules?.length || 0}개의 룰 | 평균 위험도: {Math.round(avgRisk)}%
-        </p>
-        <button 
-          onClick={() => {
-            console.log('상세 보기 클릭:', type, rules);
-            if (rules && rules.length > 0) {
-              onShowDetail(type, 0);
-            } else {
-              alert('표시할 룰이 없습니다.');
-            }
-          }}
-          style={{
-            marginTop: '0.5rem',
-            padding: '0.5rem 1rem',
-            background: '#4a90e2',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.background = '#357abd';
-            e.target.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.background = '#4a90e2';
-            e.target.style.transform = 'translateY(0)';
-          }}
-        >
-          <i className="fas fa-info-circle"></i> 상세 보기
-        </button>
-      </div>
+
+      {/* 하단: 이 룰 선택 버튼 */}
       <div className="rule-actions">
         <button 
           className={`select-rule-btn ${selectedType === type ? 'selected' : ''}`}
