@@ -19,6 +19,18 @@ from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
+
+# S3 로그 로더 임포트
+try:
+    from s3_log_loader import S3WafLogLoader
+    S3_AVAILABLE = True
+except ImportError:
+    print("⚠️  s3_log_loader 모듈을 찾을 수 없습니다. 로컬 파일만 사용합니다.")
+    S3_AVAILABLE = False
 
 app = Flask(__name__)
 CORS(app)
@@ -86,10 +98,25 @@ class DashboardDataStore:
         return daily_data
     
     def get_monthly_attack_types(self) -> Dict[str, int]:
+        """
+        월별 공격 유형 집계 (정상 트래픽 제외)
+        """
         attack_types = defaultdict(int)
+        
+        # 제외할 트래픽 유형
+        excluded_types = [
+            'Normal Traffic',
+            'Allowed Traffic',
+            'Debug Resource Request'
+        ]
+        
         for log in self.logs:
             attack_type = log.get('attack_type', 'Unknown')
-            attack_types[attack_type] += 1
+            
+            # 정상 트래픽은 제외
+            if attack_type not in excluded_types:
+                attack_types[attack_type] += 1
+        
         return dict(attack_types)
     
     def get_risk_distribution(self, rules: List[Dict]) -> Dict[str, int]:
@@ -106,11 +133,15 @@ data_store = DashboardDataStore()
 # ==========================================
 
 def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    WAF 로그 파싱 (개선된 공격 유형 탐지)
+    """
     http_request = log_entry.get('httpRequest', {})
     
     attack_type = 'Unknown'
     rule_id = None
     
+    # 1. terminatingRule에서 공격 유형 확인
     for rule_group in log_entry.get('ruleGroupList', []):
         terminating_rule = rule_group.get('terminatingRule')
         if terminating_rule:
@@ -127,6 +158,7 @@ def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
                 attack_type = 'Command Injection'
             break
     
+    # 2. labels에서 공격 유형 확인
     labels = log_entry.get('labels', [])
     if labels and attack_type == 'Unknown':
         label_name = labels[0].get('name', '')
@@ -137,6 +169,59 @@ def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
         elif 'XSS' in label_name:
             attack_type = 'Cross-Site Scripting (XSS)'
     
+    # 3. URI와 args에서 공격 패턴 직접 탐지 (WAF가 차단하지 않은 경우)
+    if attack_type == 'Unknown':
+        uri = http_request.get('uri', '')
+        args = http_request.get('args', '')
+        combined_input = (uri + ' ' + args).lower()
+        
+        # SQL Injection 패턴
+        sql_patterns = [
+            "' or ", '" or ', '1=1', '1 = 1', 'union select', 
+            'drop table', 'insert into', 'delete from', 'update set',
+            '--', '/*', '*/', 'xp_', 'sp_', 'exec(', 'execute(',
+            'or 1=1', 'or true', "' or '1'='1", '" or "1"="1'
+        ]
+        if any(pattern in combined_input for pattern in sql_patterns):
+            attack_type = 'SQL Injection (Pattern Detected)'
+        
+        # XSS 패턴
+        xss_patterns = [
+            '<script', '</script>', 'javascript:', 'onerror=', 'onload=',
+            'onclick=', 'onmouseover=', '<iframe', 'alert(', 'prompt(',
+            'confirm(', 'document.cookie', 'document.write'
+        ]
+        if attack_type == 'Unknown' and any(pattern in combined_input for pattern in xss_patterns):
+            attack_type = 'Cross-Site Scripting (XSS Pattern)'
+        
+        # Path Traversal 패턴
+        path_patterns = ['../', '..\\', '%2e%2e', 'etc/passwd', 'windows/system32']
+        if attack_type == 'Unknown' and any(pattern in combined_input for pattern in path_patterns):
+            attack_type = 'Path Traversal'
+        
+        # Command Injection 패턴
+        cmd_patterns = ['|', ';', '&&', '||', '`', '$(', '${', 'cat ', 'ls ', 'wget ', 'curl ']
+        if attack_type == 'Unknown' and any(pattern in combined_input for pattern in cmd_patterns):
+            attack_type = 'Command Injection (Pattern)'
+        
+        # File Inclusion 패턴
+        file_patterns = ['php://', 'file://', 'data://', 'expect://', 'zip://']
+        if attack_type == 'Unknown' and any(pattern in combined_input for pattern in file_patterns):
+            attack_type = 'File Inclusion'
+    
+    # 4. 정상 트래픽 분류
+    if attack_type == 'Unknown':
+        action = log_entry.get('action', 'UNKNOWN')
+        if action == 'ALLOW':
+            # 정상 트래픽으로 보이는 경우
+            if not args and uri in ['/', '/favicon.ico', '/robots.txt']:
+                attack_type = 'Normal Traffic'
+            # 디버거 리소스 요청
+            elif '__debugger__' in args:
+                attack_type = 'Debug Resource Request'
+            else:
+                attack_type = 'Allowed Traffic'
+    
     timestamp_ms = log_entry.get('timestamp', 0)
     if timestamp_ms > 0:
         timestamp = datetime.fromtimestamp(timestamp_ms / 1000.0).isoformat()
@@ -145,6 +230,38 @@ def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
     
     action = log_entry.get('action', 'UNKNOWN')
     host = http_request.get('host', 'Unknown')
+    
+    # 위험 점수 계산 (공격 패턴 기반)
+    risk_score = 20  # 기본값
+    if 'SQL Injection' in attack_type:
+        risk_score = 85
+    elif 'XSS' in attack_type:
+        risk_score = 80
+    elif 'Command Injection' in attack_type:
+        risk_score = 90
+    elif 'Path Traversal' in attack_type:
+        risk_score = 75
+    elif 'File Inclusion' in attack_type:
+        risk_score = 85
+    elif action == 'BLOCK':
+        risk_score = 95
+    elif action == 'COUNT':
+        risk_score = 60
+    elif 'Normal' in attack_type or 'Allowed' in attack_type:
+        risk_score = 10
+    
+    # HTTP 응답 코드 처리 (null인 경우 기본값 설정)
+    response_code = log_entry.get('responseCodeSent')
+    if response_code is None or response_code == 'null':
+        # WAF 액션에 따라 예상 응답 코드 추정
+        if action == 'BLOCK':
+            response_code = 403  # Forbidden
+        elif action == 'COUNT':
+            response_code = 200  # 카운트만 하고 통과
+        elif 'SQL Injection' in attack_type or 'XSS' in attack_type or 'Command Injection' in attack_type:
+            response_code = 200  # 공격이지만 ALLOW된 경우
+        else:
+            response_code = 'N/A'  # 응답 코드 없음
     
     parsed_log = {
         'id': http_request.get('requestId', 'UNKNOWN'),
@@ -157,10 +274,10 @@ def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
         'uri': http_request.get('uri', '/'),
         'args': http_request.get('args', ''),
         'http_request': f"{http_request.get('httpMethod', 'GET')} {http_request.get('uri', '/')} {http_request.get('httpVersion', 'HTTP/1.1')}",
-        'http_response': log_entry.get('responseCodeSent', 'N/A'),
+        'http_response': response_code,
         'waf_action': action,
-        'rule_id': rule_id or 'Default_Action',
-        'risk_score': 80 if action == 'BLOCK' else 50 if action == 'COUNT' else 20
+        'rule_id': rule_id or log_entry.get('terminatingRuleId', 'Default_Action'),
+        'risk_score': risk_score
     }
     
     return parsed_log
@@ -183,7 +300,10 @@ def load_waf_logs_from_file(file_path: str):
             parsed_log = parse_waf_log(log_entry)
             data_store.add_log(parsed_log)
             
-            if log_entry.get('action') in ['BLOCK', 'COUNT']:
+            # BLOCK/COUNT 액션이거나 공격 패턴이 탐지된 경우 룰 생성
+            if log_entry.get('action') in ['BLOCK', 'COUNT'] or \
+               any(pattern in parsed_log.get('attack_type', '') for pattern in 
+                   ['SQL Injection', 'XSS', 'Command Injection', 'Path Traversal', 'File Inclusion']):
                 create_rule_from_log(log_entry, parsed_log)
         
         print(f"✅ {len(log_entries)}개의 WAF 로그를 성공적으로 로드했습니다.")
@@ -201,8 +321,12 @@ def load_waf_logs_from_file(file_path: str):
         return 0
 
 def create_rule_from_log(log_entry: Dict[str, Any], parsed_log: Dict[str, Any]):
+    """
+    로그에서 룰 생성 (개선됨: 패턴 탐지된 공격도 포함)
+    """
     http_request = log_entry.get('httpRequest', {})
     
+    # 1. terminatingRule이 있는 경우 (WAF가 실제로 차단한 경우)
     for rule_group in log_entry.get('ruleGroupList', []):
         terminating_rule = rule_group.get('terminatingRule')
         if terminating_rule:
@@ -238,7 +362,48 @@ def create_rule_from_log(log_entry: Dict[str, Any], parsed_log: Dict[str, Any]):
                 'risk_score': min(parsed_log['risk_score'] + 20, 95)
             }
             data_store.add_rule_after(rule_after)
-            break
+            return
+    
+    # 2. 패턴 기반으로 탐지된 공격 (WAF가 놓친 경우)
+    attack_type = parsed_log.get('attack_type', 'Unknown')
+    
+    # 실제 공격 패턴이 탐지된 경우에만 룰 생성
+    if 'SQL Injection' in attack_type or 'XSS' in attack_type or \
+       'Command Injection' in attack_type or 'Path Traversal' in attack_type or \
+       'File Inclusion' in attack_type:
+        
+        rule_before = {
+            'id': f"RULE-BEFORE-{parsed_log['id'][:8]}",
+            'name': f"기존 WAF 룰 (미탐지): {attack_type}",
+            'risk_level': 'HIGH' if parsed_log['risk_score'] >= 80 else 'MEDIUM',
+            'timestamp': parsed_log['timestamp'],
+            'target_ip': parsed_log['source_ip'],
+            'target_country': parsed_log['source_country'],
+            'attack_type': attack_type,
+            'attack_description': f"WAF가 탐지하지 못한 {attack_type} 공격 패턴",
+            'cause': f"요청 파라미터: {http_request.get('args', 'N/A')[:100]}",
+            'action': 'ALLOW (탐지 실패)',
+            'impact': '⚠️ 공격이 차단되지 않아 시스템에 위협 발생',
+            'risk_score': parsed_log['risk_score']
+        }
+        data_store.add_rule_before(rule_before)
+        
+        rule_after = {
+            'id': f"RULE-AFTER-{parsed_log['id'][:8]}",
+            'name': f"AI 개선 룰: {attack_type} 탐지",
+            'risk_level': 'HIGH',
+            'timestamp': datetime.now().isoformat(),
+            'target_ip': parsed_log['source_ip'],
+            'target_country': parsed_log['source_country'],
+            'attack_type': attack_type,
+            'attack_description': f'AI 기반 {attack_type} 패턴 탐지 및 차단',
+            'cause': f"AI 분석 결과: {attack_type} 공격 패턴 확인",
+            'action': 'BLOCK (AI 기반 정밀 차단)',
+            'impact': '✅ 공격 차단 성공, 시스템 보호',
+            'expected_effect': f'{attack_type} 공격 100% 차단, 오탐률 최소화',
+            'risk_score': min(parsed_log['risk_score'] + 15, 95)
+        }
+        data_store.add_rule_after(rule_after)
 
 def generate_sample_data():
     print("📊 샘플 데이터를 생성합니다...")
@@ -301,22 +466,78 @@ def generate_sample_data():
         data_store.add_rule_after(rule_after)
 
 def initialize_data():
-    possible_paths = [
-        'waf_logs.json',
-        'logs/waf_logs.json',
-        '../waf_logs.json',
-        'waf_logs.txt'
-    ]
+    """
+    데이터 초기화 함수
+    우선순위:
+    1. S3 버킷에서 로그 로드 (S3_AVAILABLE=True이고 설정된 경우)
+    2. 로컬 waf_logs.json 파일
+    3. 샘플 데이터 생성
+    """
+    
+    # 환경 변수에서 S3 설정 읽기
+    use_s3 = os.environ.get('USE_S3_LOGS', 'false').lower() == 'true'
+    s3_bucket = os.environ.get('S3_BUCKET_NAME', 'aws-waf-logs-attack-683123960885-ap-northeast-2-an')
+    s3_region = os.environ.get('S3_REGION', 'ap-northeast-2')
     
     loaded = False
-    for path in possible_paths:
-        if os.path.exists(path):
-            print(f"📂 로그 파일 발견: {path}")
-            count = load_waf_logs_from_file(path)
-            if count > 0:
-                loaded = True
-                break
     
+    # 1. S3에서 로그 로드 시도
+    if use_s3 and S3_AVAILABLE:
+        print("="*60)
+        print("🌐 S3 버킷에서 WAF 로그 로드 시도...")
+        print("="*60)
+        try:
+            loader = S3WafLogLoader(bucket_name=s3_bucket, region=s3_region)
+            s3_logs = loader.load_logs_from_s3(
+                hours_back=24,           # 최근 24시간
+                max_files_per_hour=10,   # 시간당 최대 10개 파일
+                max_total_logs=1000      # 최대 1000개 로그
+            )
+            
+            if s3_logs:
+                print(f"✅ S3에서 {len(s3_logs)}개의 로그를 로드했습니다.")
+                
+                # S3 로그를 로컬 파일로 저장 (백업용)
+                loader.save_logs_to_file(s3_logs, 'waf_logs.json')
+                
+                # 로그 파싱 및 저장
+                for log_entry in s3_logs:
+                    parsed_log = parse_waf_log(log_entry)
+                    data_store.add_log(parsed_log)
+                    
+                    # BLOCK/COUNT 액션이거나 공격 패턴이 탐지된 경우 룰 생성
+                    if log_entry.get('action') in ['BLOCK', 'COUNT'] or \
+                       any(pattern in parsed_log.get('attack_type', '') for pattern in 
+                           ['SQL Injection', 'XSS', 'Command Injection', 'Path Traversal', 'File Inclusion']):
+                        create_rule_from_log(log_entry, parsed_log)
+                
+                loaded = True
+                print(f"✅ {len(s3_logs)}개의 WAF 로그를 성공적으로 파싱했습니다.")
+            else:
+                print("⚠️  S3에서 로그를 찾을 수 없습니다. 로컬 파일을 시도합니다.")
+        
+        except Exception as e:
+            print(f"❌ S3 로그 로드 중 오류 발생: {e}")
+            print("   로컬 파일을 시도합니다...")
+    
+    # 2. 로컬 파일에서 로그 로드 시도
+    if not loaded:
+        possible_paths = [
+            'waf_logs.json',
+            'logs/waf_logs.json',
+            '../waf_logs.json',
+            'waf_logs.txt'
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                print(f"📂 로컬 로그 파일 발견: {path}")
+                count = load_waf_logs_from_file(path)
+                if count > 0:
+                    loaded = True
+                    break
+    
+    # 3. 샘플 데이터 생성
     if not loaded:
         print("📂 WAF 로그 파일을 찾을 수 없습니다.")
         generate_sample_data()
@@ -378,10 +599,25 @@ def get_logs():
 
 @app.route('/api/theme', methods=['GET', 'POST'])
 def theme():
-    if request.method == 'POST':
-        data_store.theme = request.json.get('theme', 'light')
-        return jsonify({'theme': data_store.theme})
-    return jsonify({'theme': data_store.theme})
+    """
+    테마 설정 조회 및 변경
+    """
+    try:
+        if request.method == 'POST':
+            # JSON 데이터 안전하게 가져오기
+            data = request.get_json(silent=True)
+            if data and 'theme' in data:
+                data_store.theme = data['theme']
+            else:
+                data_store.theme = 'light'
+            return jsonify({'theme': data_store.theme, 'success': True})
+        
+        # GET 요청
+        return jsonify({'theme': data_store.theme, 'success': True})
+    
+    except Exception as e:
+        print(f"테마 변경 오류: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
 
 @app.route('/api/download-report')
 def download_report():

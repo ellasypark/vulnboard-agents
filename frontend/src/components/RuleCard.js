@@ -71,15 +71,31 @@ function RuleCard({ title, icon, rules, type, selectedType, onSelect, onShowDeta
           총 {rules?.length || 0}개의 룰 | 평균 위험도: {Math.round(avgRisk)}%
         </p>
         <button 
-          onClick={() => onShowDetail(type, 0)}
+          onClick={() => {
+            console.log('상세 보기 클릭:', type, rules);
+            if (rules && rules.length > 0) {
+              onShowDetail(type, 0);
+            } else {
+              alert('표시할 룰이 없습니다.');
+            }
+          }}
           style={{
             marginTop: '0.5rem',
             padding: '0.5rem 1rem',
-            background: 'var(--accent)',
+            background: '#4a90e2',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.background = '#357abd';
+            e.target.style.transform = 'translateY(-2px)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.background = '#4a90e2';
+            e.target.style.transform = 'translateY(0)';
           }}
         >
           <i className="fas fa-info-circle"></i> 상세 보기

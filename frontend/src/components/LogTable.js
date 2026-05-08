@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import './LogTable.css';
 
 function LogTable({ logs }) {
@@ -13,8 +13,15 @@ function LogTable({ logs }) {
     waf_action: ''
   });
   
+  // 페이지네이션 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(20);
+  
   // 필터 표시 여부
   const [showFilters, setShowFilters] = useState(false);
+  
+  // 테이블 참조 (스크롤용)
+  const tableRef = useRef(null);
 
   // 정렬 함수
   const handleSort = (key) => {
@@ -23,11 +30,13 @@ function LogTable({ logs }) {
       direction = 'desc';
     }
     setSortConfig({ key, direction });
+    setCurrentPage(1); // 정렬 시 첫 페이지로
   };
 
   // 필터 변경 함수
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+    setCurrentPage(1); // 필터 변경 시 첫 페이지로
   };
 
   // 필터 초기화
@@ -38,6 +47,7 @@ function LogTable({ logs }) {
       attack_type: '',
       waf_action: ''
     });
+    setCurrentPage(1);
   };
 
   // 정렬 및 필터링된 로그 데이터
@@ -98,6 +108,59 @@ function LogTable({ logs }) {
     return filtered;
   }, [logs, sortConfig, filters]);
 
+  // 페이지네이션 계산 (필터링된 결과 기준)
+  const totalPages = Math.ceil(processedLogs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentLogs = processedLogs.slice(startIndex, endIndex);
+
+  // 페이지 변경
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      // 테이블 상단으로 부드럽게 스크롤 (약간의 여유 공간 포함)
+      if (tableRef.current) {
+        const tableTop = tableRef.current.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({ 
+          top: tableTop - 100, // 테이블 위 100px 여유 공간
+          behavior: 'smooth' 
+        });
+      }
+    }
+  };
+
+  // 페이지 번호 생성 (최대 10개 표시)
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 10;
+    
+    if (totalPages <= maxVisible) {
+      // 전체 페이지가 10개 이하면 모두 표시
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // 현재 페이지 기준으로 앞뒤 페이지 표시
+      let start = Math.max(1, currentPage - 4);
+      let end = Math.min(totalPages, currentPage + 5);
+      
+      // 시작이 1이면 끝을 늘림
+      if (start === 1) {
+        end = Math.min(totalPages, maxVisible);
+      }
+      // 끝이 마지막이면 시작을 줄임
+      if (end === totalPages) {
+        start = Math.max(1, totalPages - maxVisible + 1);
+      }
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+    }
+    
+    return pages;
+  };
+
   // 정렬 아이콘 렌더링
   const renderSortIcon = (key) => {
     if (sortConfig.key !== key) {
@@ -112,7 +175,7 @@ function LogTable({ logs }) {
   const activeFilterCount = Object.values(filters).filter(v => v !== '').length;
 
   return (
-    <div className="card">
+    <div className="card" ref={tableRef}>
       <div className="card-title-row">
         <div className="card-title">
           <i className="fas fa-list"></i> WAF 로그
@@ -214,8 +277,8 @@ function LogTable({ logs }) {
             </tr>
           </thead>
           <tbody>
-            {processedLogs && processedLogs.length > 0 ? (
-              processedLogs.map((log, index) => (
+            {currentLogs && currentLogs.length > 0 ? (
+              currentLogs.map((log, index) => (
                 <tr key={index}>
                   <td><div>{new Date(log.timestamp).toLocaleString('ko-KR')}</div></td>
                   <td><div>{log.source_ip}</div></td>
@@ -248,6 +311,78 @@ function LogTable({ logs }) {
           </tbody>
         </table>
       </div>
+
+      {/* 페이지네이션 - 필터링된 결과가 20개 이상일 때 표시 */}
+      {processedLogs.length > itemsPerPage && (
+        <div className="pagination">
+          <div className="pagination-info">
+            {processedLogs.length > 0 ? (
+              <>
+                {startIndex + 1}-{Math.min(endIndex, processedLogs.length)} / {processedLogs.length}개
+                {logs && logs.length !== processedLogs.length && (
+                  <span style={{ marginLeft: '0.5rem', color: '#4a90e2' }}>
+                    (전체 {logs.length}개 중 필터링됨)
+                  </span>
+                )}
+              </>
+            ) : (
+              '0개'
+            )}
+          </div>
+          <div className="pagination-controls">
+            {/* 맨 처음 */}
+            <button 
+              className="page-btn"
+              onClick={() => goToPage(1)}
+              disabled={currentPage === 1}
+              title="첫 페이지"
+            >
+              <i className="fas fa-angle-double-left"></i>
+            </button>
+            
+            {/* 이전 */}
+            <button 
+              className="page-btn"
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              title="이전 페이지"
+            >
+              <i className="fas fa-angle-left"></i>
+            </button>
+            
+            {/* 페이지 번호 */}
+            {getPageNumbers().map(page => (
+              <button
+                key={page}
+                className={`page-btn ${currentPage === page ? 'active' : ''}`}
+                onClick={() => goToPage(page)}
+              >
+                {page}
+              </button>
+            ))}
+            
+            {/* 다음 */}
+            <button 
+              className="page-btn"
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              title="다음 페이지"
+            >
+              <i className="fas fa-angle-right"></i>
+            </button>
+            
+            {/* 맨 끝 */}
+            <button 
+              className="page-btn"
+              onClick={() => goToPage(totalPages)}
+              disabled={currentPage === totalPages}
+              title="마지막 페이지"
+            >
+              <i className="fas fa-angle-double-right"></i>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -33,7 +33,7 @@ function App() {
         axios.get('/api/monthly-attack-types'),
         axios.get('/api/rules/before'),
         axios.get('/api/rules/after'),
-        axios.get('/api/logs?page=1&per_page=20')
+        axios.get('/api/logs?page=1&per_page=10000')  // 전체 로그 가져오기
       ]);
 
       setGeoData(geo.data);
@@ -47,10 +47,17 @@ function App() {
     }
   };
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
+  const toggleTheme = async () => {
+    const newTheme = !isDarkMode;
+    setIsDarkMode(newTheme);
     document.body.classList.toggle('dark-mode');
-    axios.post('/api/theme', { theme: !isDarkMode ? 'dark' : 'light' });
+    
+    try {
+      await axios.post('/api/theme', { theme: newTheme ? 'dark' : 'light' });
+    } catch (error) {
+      console.error('테마 변경 오류:', error);
+      // 에러 발생 시 UI는 이미 변경되었으므로 그대로 유지
+    }
   };
 
   const downloadReport = () => {
