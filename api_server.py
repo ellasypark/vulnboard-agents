@@ -678,7 +678,7 @@ def initialize_data():
                 print(f"✅ S3에서 {len(s3_logs)}개의 로그를 로드했습니다.")
                 
                 # S3 로그를 로컬 파일로 저장 (백업용)
-                loader.save_logs_to_file(s3_logs, 'waf_logs.json')
+                loader.save_logs_to_file(s3_logs, 'data/waf_logs.json')
                 
                 # 로그 파싱 및 저장
                 for log_entry in s3_logs:
@@ -703,6 +703,7 @@ def initialize_data():
     # 2. 로컬 파일에서 로그 로드 시도
     if not loaded:
         possible_paths = [
+            'data/waf_logs.json',
             'waf_logs.json',
             'logs/waf_logs.json',
             '../waf_logs.json',
@@ -863,35 +864,78 @@ def remove_rule():
 def get_risk_calculation():
     """
     위험도 계산 정보 반환
+    
+    계산 로직:
+    1. 현재 위험도 (최고 위험도): 아무 룰도 적용하지 않았을 때의 위험도 (100점 만점)
+    2. 최저 위험도: 모든 AI 추천 룰을 적용했을 때의 위험도
+    3. 각 룰의 위험도 감소 점수: WCU 기반 중요도에 따라 계산
+    4. 룰 적용/제거 시 위험도 덧셈/뺄셈
     """
     try:
-        # 최고 위험도 (아무 룰도 적용하지 않았을 때)
-        max_risk = 100
+        # 1. 현재 위험도 계산 (최고 위험도)
+        # 로그 데이터 기반으로 실제 위험도 산정
+        total_logs = len(data_store.logs)
+        high_risk_logs = sum(1 for log in data_store.logs if log.get('risk_score', 0) >= 70)
+        medium_risk_logs = sum(1 for log in data_store.logs if 40 <= log.get('risk_score', 0) < 70)
         
-        # 최저 위험도 (모든 AI 추천 룰을 적용했을 때)
-        min_risk = 15
+        # 위험도 계산: (고위험 로그 비율 * 100) + (중위험 로그 비율 * 50)
+        if total_logs > 0:
+            max_risk = min(100, round(
+                (high_risk_logs / total_logs * 100) + 
+                (medium_risk_logs / total_logs * 50)
+            ))
+            # 최소 50점 보장 (룰이 없으면 위험함)
+            max_risk = max(50, max_risk)
+        else:
+            max_risk = 100  # 로그가 없으면 최대 위험도
         
-        # AI 추천 룰 목록과 각 룰의 위험도 감소 점수
+        # 2. 최저 위험도 계산 (모든 AI 추천 룰 적용 시)
+        # AI 룰을 모두 적용하면 위험도가 크게 감소
         ai_rules = data_store.rules_after
-        total_weight = sum(rule.get('wcu', 100) for rule in ai_rules)
+        total_wcu = sum(rule.get('wcu', 100) for rule in ai_rules)
         
-        # 각 룰의 점수 계산 (WCU 기반 가중치)
+        # WCU가 높을수록 더 많은 위협을 차단 -> 위험도 감소
+        # 전체 WCU 1500 이상이면 위험도를 15점까지 낮출 수 있음
+        if total_wcu >= 1500:
+            min_risk = 15
+        elif total_wcu >= 1000:
+            min_risk = 25
+        elif total_wcu >= 500:
+            min_risk = 35
+        else:
+            min_risk = 45
+        
+        # 3. 각 룰의 위험도 감소 점수 계산 (중요도 기반)
         risk_reduction_per_rule = []
+        total_reduction = max_risk - min_risk  # 전체 감소 가능 범위
+        
         for rule in ai_rules:
-            weight = rule.get('wcu', 100)
-            # 전체 위험도 감소량을 WCU 비율로 분배
-            reduction = ((max_risk - min_risk) * weight / total_weight) if total_weight > 0 else 0
+            wcu = rule.get('wcu', 100)
+            detections = rule.get('total_detections', 0)
+            
+            # 중요도 계산: WCU (70%) + 탐지 건수 (30%)
+            wcu_weight = wcu / total_wcu if total_wcu > 0 else 0
+            detection_weight = detections / total_logs if total_logs > 0 else 0
+            
+            importance = (wcu_weight * 0.7) + (detection_weight * 0.3)
+            
+            # 해당 룰의 위험도 감소 점수
+            reduction = round(total_reduction * importance, 2)
+            
             risk_reduction_per_rule.append({
                 'rule_id': rule['id'],
-                'reduction': round(reduction, 2)
+                'reduction': reduction,
+                'importance': round(importance * 100, 1)  # 백분율
             })
         
         return jsonify({
             'success': True,
             'max_risk': max_risk,
             'min_risk': min_risk,
-            'current_risk': max_risk,  # 초기값
-            'risk_reduction_per_rule': risk_reduction_per_rule
+            'current_risk': max_risk,  # 초기값 (아무 룰도 적용 안 함)
+            'risk_reduction_per_rule': risk_reduction_per_rule,
+            'total_logs': total_logs,
+            'high_risk_logs': high_risk_logs
         })
     
     except Exception as e:

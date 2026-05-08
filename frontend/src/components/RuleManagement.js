@@ -88,12 +88,12 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
         // 중앙에 추가
         setAppliedRules(prev => [...prev, selectedRule]);
         
-        // 위험도 감소
+        // 위험도 감소 (뺄셈)
         const reduction = riskReductionMap[selectedRule.id] || 0;
         setCurrentRisk(prev => Math.max(prev - reduction, minRisk));
         
         closeModal();
-        alert(`✅ ${selectedRule.name} 룰이 적용되었습니다.`);
+        alert(`✅ ${selectedRule.name} 룰이 적용되었습니다.\n위험도 -${reduction.toFixed(1)}점 감소`);
       }
     } catch (error) {
       console.error('룰 적용 오류:', error);
@@ -118,11 +118,11 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
         // 좌측에 추가
         setSuggestedRules(prev => [...prev, rule]);
         
-        // 위험도 증가
+        // 위험도 증가 (덧셈)
         const reduction = riskReductionMap[rule.id] || 0;
         setCurrentRisk(prev => Math.min(prev + reduction, maxRisk));
         
-        alert(`✅ ${rule.name} 룰이 제거되었습니다.`);
+        alert(`✅ ${rule.name} 룰이 제거되었습니다.\n위험도 +${reduction.toFixed(1)}점 증가`);
       }
     } catch (error) {
       console.error('룰 제거 오류:', error);
