@@ -5,21 +5,17 @@ import Header from './components/Header';
 import GeoMap from './components/GeoMap';
 import HourlyChart from './components/HourlyChart';
 import AttackTypeChart from './components/AttackTypeChart';
-import RuleCard from './components/RuleCard';
-import RuleComparison from './components/RuleComparison';
+import RuleManagement from './components/RuleManagement';
 import LogTable from './components/LogTable';
-import RulePopup from './components/RulePopup';
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [geoData, setGeoData] = useState({});
   const [hourlyData, setHourlyData] = useState({});
   const [attackTypeData, setAttackTypeData] = useState({});
-  const [rulesBefore, setRulesBefore] = useState([]);
-  const [rulesAfter, setRulesAfter] = useState([]);
+  const [attackTypeColors, setAttackTypeColors] = useState({});
+  const [aiRules, setAiRules] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [selectedRuleType, setSelectedRuleType] = useState(null);
-  const [popupData, setPopupData] = useState(null);
 
   useEffect(() => {
     loadAllData();
@@ -27,20 +23,19 @@ function App() {
 
   const loadAllData = async () => {
     try {
-      const [geo, hourly, attackType, before, after, logsData] = await Promise.all([
+      const [geo, hourly, attackType, after, logsData] = await Promise.all([
         axios.get('/api/geographic-data'),
         axios.get('/api/hourly-attacks'),
         axios.get('/api/monthly-attack-types'),
-        axios.get('/api/rules/before'),
-        axios.get('/api/rules/after'),
+        axios.get('/api/rules/after'),  // AI 추천 룰 (개선 후 룰)
         axios.get('/api/logs?page=1&per_page=10000')  // 전체 로그 가져오기
       ]);
 
       setGeoData(geo.data);
       setHourlyData(hourly.data);
-      setAttackTypeData(attackType.data);
-      setRulesBefore(before.data.rules);
-      setRulesAfter(after.data.rules);
+      setAttackTypeData(attackType.data.data || attackType.data);
+      setAttackTypeColors(attackType.data.colors || {});
+      setAiRules(after.data.rules);
       setLogs(logsData.data.logs);
     } catch (error) {
       console.error('데이터 로드 오류:', error);
@@ -64,35 +59,6 @@ function App() {
     window.location.href = '/api/download-report';
   };
 
-  const selectRule = (type) => {
-    setSelectedRuleType(type);
-  };
-
-  const applyRule = () => {
-    if (!selectedRuleType) {
-      alert('룰을 먼저 선택해주세요.');
-      return;
-    }
-    
-    const ruleName = selectedRuleType === 'before' ? '개선 전 룰' : '개선 후 룰';
-    const confirmed = window.confirm(`${ruleName}을(를) WAF에 적용하시겠습니까?\n\n이 작업은 실제 WAF 설정을 변경합니다.`);
-    
-    if (confirmed) {
-      alert(`✅ ${ruleName}이(가) 성공적으로 적용되었습니다!`);
-    }
-  };
-
-  const showPopup = (type, index) => {
-    const rules = type === 'before' ? rulesBefore : rulesAfter;
-    if (rules && rules.length > index) {
-      setPopupData({ type, index, rule: rules[index], rules });
-    }
-  };
-
-  const closePopup = () => {
-    setPopupData(null);
-  };
-
   return (
     <div className="App">
       <Header 
@@ -109,53 +75,16 @@ function App() {
           <AttackTypeChart data={attackTypeData} isDarkMode={isDarkMode} />
         </div>
 
-        {/* 중앙: 개선 전/후 룰 */}
-        <div className="grid grid-2">
-          <RuleCard 
-            title="개선 전 룰"
-            icon="exclamation-triangle"
-            rules={rulesBefore}
-            type="before"
-            selectedType={selectedRuleType}
-            onSelect={selectRule}
-            onShowDetail={showPopup}
-            isDarkMode={isDarkMode}
-          />
-          <RuleCard 
-            title="개선 후 룰"
-            icon="check-circle"
-            rules={rulesAfter}
-            type="after"
-            selectedType={selectedRuleType}
-            onSelect={selectRule}
-            onShowDetail={showPopup}
-            isDarkMode={isDarkMode}
-          />
-        </div>
-
-        {/* 룰 비교 및 적용 */}
-        <RuleComparison 
-          selectedType={selectedRuleType}
-          onApply={applyRule}
+        {/* 중앙: WAF 룰 관리 (3단 레이아웃) */}
+        <RuleManagement 
+          aiRules={aiRules}
+          attackTypeColors={attackTypeColors}
+          isDarkMode={isDarkMode}
         />
 
         {/* 최하단: 로그 테이블 */}
         <LogTable logs={logs} />
       </div>
-
-      {/* 팝업 */}
-      {popupData && (
-        <RulePopup 
-          data={popupData}
-          onClose={closePopup}
-          onNavigate={(direction) => {
-            const newIndex = popupData.index + direction;
-            if (newIndex >= 0 && newIndex < popupData.rules.length) {
-              showPopup(popupData.type, newIndex);
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

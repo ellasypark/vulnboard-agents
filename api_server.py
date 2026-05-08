@@ -202,12 +202,83 @@ class DashboardDataStore:
     def add_rule_after(self, rule: Dict[str, Any]):
         self.rules_after.append(rule)
     
-    def get_geographic_data(self) -> Dict[str, int]:
+    def get_geographic_data(self) -> Dict[str, Any]:
+        """
+        지역별 공격 데이터 및 상대적 빈도 인덱스 반환 (빨간색 계열)
+        """
         geo_data = defaultdict(int)
         for log in self.logs:
             country = log.get('source_country', 'Unknown')
             geo_data[country] += 1
-        return dict(geo_data)
+        
+        if not geo_data:
+            return {
+                'data': {},
+                'legend': {
+                    'ranges': [],
+                    'colors': [],
+                    'percentages': []
+                }
+            }
+        
+        # 최대/최소값 계산
+        max_count = max(geo_data.values())
+        min_count = min(geo_data.values())
+        total_attacks = sum(geo_data.values())
+        
+        # 상대적 퍼센티지 기준으로 범위 계산
+        # 높음: 상위 30%, 중간: 30-70%, 낮음: 하위 30%
+        sorted_counts = sorted(geo_data.values(), reverse=True)
+        total_countries = len(sorted_counts)
+        
+        high_threshold_idx = int(total_countries * 0.3)
+        low_threshold_idx = int(total_countries * 0.7)
+        
+        high_threshold = sorted_counts[high_threshold_idx] if high_threshold_idx < len(sorted_counts) else max_count
+        low_threshold = sorted_counts[low_threshold_idx] if low_threshold_idx < len(sorted_counts) else min_count
+        
+        # 인덱스 범위 생성 (1, 5, 10, 20 단위) - 사용자 친화적인 숫자
+        def calculate_index_ranges(max_val):
+            """적절한 인덱스 범위 계산"""
+            if max_val <= 5:
+                return [1, 2, 3, 4, 5]
+            elif max_val <= 20:
+                return [1, 5, 10, 15, 20]
+            elif max_val <= 50:
+                return [1, 10, 20, 30, 40, 50]
+            elif max_val <= 100:
+                return [1, 20, 40, 60, 80, 100]
+            else:
+                step = max_val // 5
+                return [step * i for i in range(1, 6)]
+        
+        index_ranges = calculate_index_ranges(max_count)
+        
+        # 색상 매핑 (빨간색 계열로 변경 - 보안 경각심)
+        colors = ['#fecaca', '#fca5a5', '#f87171', '#ef4444', '#dc2626']
+        
+        # 각 범위의 퍼센티지 계산
+        percentages = []
+        for range_val in index_ranges:
+            percentage = round((range_val / max_count) * 100, 1) if max_count > 0 else 0
+            percentages.append(percentage)
+        
+        return {
+            'data': dict(geo_data),
+            'legend': {
+                'ranges': index_ranges,
+                'colors': colors,
+                'percentages': percentages,
+                'thresholds': {
+                    'high': high_threshold,
+                    'medium': low_threshold,
+                    'low': min_count
+                }
+            },
+            'max_count': max_count,
+            'min_count': min_count,
+            'total_attacks': total_attacks
+        }
     
     def get_hourly_attacks(self, days: int = 7) -> Dict[str, List[int]]:
         """
@@ -244,9 +315,9 @@ class DashboardDataStore:
         
         return daily_data
     
-    def get_monthly_attack_types(self) -> Dict[str, int]:
+    def get_monthly_attack_types(self) -> Dict[str, Any]:
         """
-        월별 공격 유형 집계 (정상 트래픽 제외)
+        월별 공격 유형 집계 (정상 트래픽 제외) + 색상 매핑
         """
         attack_types = defaultdict(int)
         
@@ -264,7 +335,31 @@ class DashboardDataStore:
             if attack_type not in excluded_types:
                 attack_types[attack_type] += 1
         
-        return dict(attack_types)
+        # 공격 유형별 색상 매핑
+        color_map = {
+            'SQL Injection': '#ef4444',
+            'SQL Injection (Pattern Detected)': '#dc2626',
+            'Cross-Site Scripting (XSS)': '#f97316',
+            'Cross-Site Scripting (XSS Pattern)': '#ea580c',
+            'Command Injection': '#8b5cf6',
+            'Command Injection (Pattern)': '#7c3aed',
+            'Path Traversal': '#06b6d4',
+            'File Inclusion': '#10b981',
+            'Size Restrictions Violation': '#f59e0b',
+            'Unknown': '#6b7280',
+            'IP Reputation': '#3b82f6',
+            'Common Vulnerabilities': '#ec4899',
+            'Known Bad Inputs': '#14b8a6',
+            'Linux Protection': '#84cc16',
+            'Unix Protection': '#a3e635',
+            'Rate Limiting': '#f43f5e',
+            'Geo Blocking': '#8b5cf6'
+        }
+        
+        return {
+            'data': dict(attack_types),
+            'colors': color_map
+        }
     
     def get_risk_distribution(self, rules: List[Dict]) -> Dict[str, int]:
         risk_dist = {'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
@@ -708,6 +803,139 @@ def theme():
     
     except Exception as e:
         print(f"테마 변경 오류: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/apply-rule', methods=['POST'])
+def apply_rule():
+    """
+    개별 WAF 룰 적용 (AI 제안 -> 적용된 룰로 이동)
+    """
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'No data provided', 'success': False}), 400
+        
+        rule_id = data.get('rule_id')
+        if not rule_id:
+            return jsonify({'error': 'rule_id is required', 'success': False}), 400
+        
+        # 실제 WAF API 호출 로직은 여기에 구현
+        # 예: boto3를 사용한 AWS WAF 룰 추가
+        
+        return jsonify({
+            'success': True,
+            'message': f'룰 {rule_id}이(가) 성공적으로 적용되었습니다.',
+            'rule_id': rule_id
+        })
+    
+    except Exception as e:
+        print(f"룰 적용 오류: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/remove-rule', methods=['POST'])
+def remove_rule():
+    """
+    적용된 WAF 룰 제거 (적용된 룰 -> AI 제안으로 롤백)
+    """
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'No data provided', 'success': False}), 400
+        
+        rule_id = data.get('rule_id')
+        if not rule_id:
+            return jsonify({'error': 'rule_id is required', 'success': False}), 400
+        
+        # 실제 WAF API 호출 로직은 여기에 구현
+        # 예: boto3를 사용한 AWS WAF 룰 제거
+        
+        return jsonify({
+            'success': True,
+            'message': f'룰 {rule_id}이(가) 성공적으로 제거되었습니다.',
+            'rule_id': rule_id
+        })
+    
+    except Exception as e:
+        print(f"룰 제거 오류: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/risk-calculation', methods=['GET'])
+def get_risk_calculation():
+    """
+    위험도 계산 정보 반환
+    """
+    try:
+        # 최고 위험도 (아무 룰도 적용하지 않았을 때)
+        max_risk = 100
+        
+        # 최저 위험도 (모든 AI 추천 룰을 적용했을 때)
+        min_risk = 15
+        
+        # AI 추천 룰 목록과 각 룰의 위험도 감소 점수
+        ai_rules = data_store.rules_after
+        total_weight = sum(rule.get('wcu', 100) for rule in ai_rules)
+        
+        # 각 룰의 점수 계산 (WCU 기반 가중치)
+        risk_reduction_per_rule = []
+        for rule in ai_rules:
+            weight = rule.get('wcu', 100)
+            # 전체 위험도 감소량을 WCU 비율로 분배
+            reduction = ((max_risk - min_risk) * weight / total_weight) if total_weight > 0 else 0
+            risk_reduction_per_rule.append({
+                'rule_id': rule['id'],
+                'reduction': round(reduction, 2)
+            })
+        
+        return jsonify({
+            'success': True,
+            'max_risk': max_risk,
+            'min_risk': min_risk,
+            'current_risk': max_risk,  # 초기값
+            'risk_reduction_per_rule': risk_reduction_per_rule
+        })
+    
+    except Exception as e:
+        print(f"위험도 계산 오류: {e}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/apply-rules', methods=['POST'])
+def apply_rules():
+    """
+    선택된 WAF 룰 적용 (레거시 - 하위 호환성)
+    """
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'error': 'No data provided', 'success': False}), 400
+        
+        rule_type = data.get('type')  # 'before' or 'after'
+        selected_rule_ids = data.get('selected_rules', [])  # 선택된 룰 ID 목록
+        
+        if not rule_type or not selected_rule_ids:
+            return jsonify({'error': 'Invalid request data', 'success': False}), 400
+        
+        # 실제 WAF 적용 로직 (시뮬레이션)
+        applied_rules = []
+        rules = data_store.rules_before if rule_type == 'before' else data_store.rules_after
+        
+        for rule_id in selected_rule_ids:
+            rule = next((r for r in rules if r['id'] == rule_id), None)
+            if rule:
+                applied_rules.append({
+                    'id': rule['id'],
+                    'name': rule['name'],
+                    'category': rule.get('category', 'Unknown'),
+                    'status': 'applied'
+                })
+        
+        return jsonify({
+            'success': True,
+            'message': f'{len(applied_rules)}개의 룰이 성공적으로 적용되었습니다.',
+            'applied_rules': applied_rules
+        })
+    
+    except Exception as e:
+        print(f"룰 적용 오류: {e}")
         return jsonify({'error': str(e), 'success': False}), 500
 
 @app.route('/api/download-report')

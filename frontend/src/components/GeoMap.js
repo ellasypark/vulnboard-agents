@@ -10,6 +10,11 @@ function GeoMap({ data, isDarkMode }) {
   useEffect(() => {
     if (!mapRef.current) return;
 
+    // 데이터 구조 확인
+    const geoData = data?.data || data || {};
+    const legend = data?.legend || {};
+    const thresholds = legend.thresholds || {};
+
     // 지도 초기화
     if (!mapInstanceRef.current) {
       mapInstanceRef.current = L.map(mapRef.current, {
@@ -43,26 +48,36 @@ function GeoMap({ data, isDarkMode }) {
       'GB': [55.3781, -3.4360],
       'BR': [-14.2350, -51.9253],
       'IN': [20.5937, 78.9629],
+      'NL': [52.1326, 5.2913],
     };
 
     const countryNames = {
       'KR': '대한민국', 'US': '미국', 'CN': '중국', 'JP': '일본',
       'RU': '러시아', 'DE': '독일', 'FR': '프랑스', 'GB': '영국',
-      'BR': '브라질', 'IN': '인도',
+      'BR': '브라질', 'IN': '인도', 'NL': '네덜란드',
     };
 
-    Object.entries(data).forEach(([country, count]) => {
+    // 상대적 기준으로 색상 및 크기 결정 (빨간색 계열)
+    const highThreshold = thresholds.high || 10;
+    const mediumThreshold = thresholds.medium || 5;
+
+    Object.entries(geoData).forEach(([country, count]) => {
       const coords = countryCoordinates[country];
       if (!coords) return;
 
-      let color = '#ffcc00';
-      let radius = 8;
-      if (count >= 10) {
-        color = '#ff4444';
+      let color, radius, level;
+      if (count >= highThreshold) {
+        color = '#dc2626';  // 높음 - 진한 빨강
         radius = 15;
-      } else if (count >= 5) {
-        color = '#ff8800';
+        level = '높음';
+      } else if (count >= mediumThreshold) {
+        color = '#f87171';  // 중간 - 중간 빨강
         radius = 12;
+        level = '중간';
+      } else {
+        color = '#fca5a5';  // 낮음 - 연한 빨강
+        radius = 8;
+        level = '낮음';
       }
 
       const circle = L.circleMarker(coords, {
@@ -78,7 +93,8 @@ function GeoMap({ data, isDarkMode }) {
       circle.bindPopup(`
         <div style="text-align: center; padding: 5px;">
           <strong>${countryName}</strong><br>
-          공격 횟수: <span style="color: ${color}; font-weight: bold;">${count}</span>
+          공격 횟수: <span style="color: ${color}; font-weight: bold;">${count}</span><br>
+          <span style="font-size: 0.85em; color: #666;">빈도: ${level}</span>
         </div>
       `);
     });
@@ -91,6 +107,11 @@ function GeoMap({ data, isDarkMode }) {
     };
   }, [data, isDarkMode]);
 
+  // 범례 데이터
+  const legend = data?.legend || {};
+  const ranges = legend.ranges || [];
+  const colors = legend.colors || [];
+
   return (
     <div className="card">
       <div className="card-title">
@@ -98,22 +119,25 @@ function GeoMap({ data, isDarkMode }) {
       </div>
       <div className="map-container">
         <div ref={mapRef} id="geoMap"></div>
-        <div className="map-legend">
-          <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>공격 빈도</div>
-          <div className="legend-item">
-            <div className="legend-color" style={{ background: '#ff4444' }}></div>
-            <span>높음 (10+)</span>
-          </div>
-          <div className="legend-item">
-            <div className="legend-color" style={{ background: '#ff8800' }}></div>
-            <span>중간 (5-9)</span>
-          </div>
-          <div className="legend-item">
-            <div className="legend-color" style={{ background: '#ffcc00' }}></div>
-            <span>낮음 (1-4)</span>
+      </div>
+      
+      {/* 하단 범례 (빨간색 계열) */}
+      {ranges.length > 0 && (
+        <div className="map-legend-bottom">
+          <div className="legend-title">공격 빈도</div>
+          <div className="legend-scale">
+            {ranges.map((range, index) => (
+              <div key={index} className="legend-item-bottom">
+                <div 
+                  className="legend-color-box" 
+                  style={{ backgroundColor: colors[index] }}
+                ></div>
+                <span className="legend-label">{range}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
