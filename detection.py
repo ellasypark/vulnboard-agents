@@ -79,6 +79,9 @@ def detect(log_data: dict) -> dict:
     method = log_data.get("method", "UNKNOWN")
     headers = {k.lower(): v for k, v in log_data.get("headers", {}).items()}
 
+    # [추가] 상태 코드 추출 (WAF나 ALB 로그에 상태 코드가 있다면 추출)
+    status_code = log_data.get("status_code") or log_data.get("status", 0)
+    
     # 2. 토큰 최적화를 위한 핵심 헤더 필터링
     target_headers = {"user-agent", "host", "content-type", "cookie", "referer", "x-forwarded-for"}
     filtered_headers = {k: v for k, v in headers.items() if k in target_headers}
@@ -106,6 +109,7 @@ def detect(log_data: dict) -> dict:
         "source_ip": src_ip,
         "target_uri": raw_url,
         "http_method": method,
+        "status_code": status_code, # [추가] LLM이 401 Unauthorized 등을 볼 수 있게 함
         "headers": filtered_headers,
         "body_raw": log_data.get("body") or log_data.get("detail"),
         "waf_action": log_data.get("waf_action") or log_data.get("action"),
