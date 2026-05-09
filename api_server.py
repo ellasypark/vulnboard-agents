@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 
 from risk_calculator import get_risk_calculator
 
-load_dotenv()
+load_dotenv(override=True)
 
 try:
     from s3_log_loader import S3WafLogLoader

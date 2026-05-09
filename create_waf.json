@@ -1,0 +1,11 @@
+{
+  "Name": "iamhalo-waf",
+  "Scope": "REGIONAL",
+  "DefaultAction": {"Allow": {}},
+  "VisibilityConfig": {
+    "SampledRequestsEnabled": true,
+    "CloudWatchMetricsEnabled": true,
+    "MetricName": "iamhalo-waf"
+  },
+  "Rules": []
+}
