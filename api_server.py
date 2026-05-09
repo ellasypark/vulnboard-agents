@@ -37,6 +37,17 @@ except ImportError:
     print("⚠️  s3_log_loader 모듈을 찾을 수 없습니다. 로컬 파일만 사용합니다.")
     S3_AVAILABLE = False
 
+# ==========================================
+# Slack SDK 임포트
+# ==========================================
+try:
+    from slack_sdk import WebClient
+    from slack_sdk.errors import SlackApiError
+    SLACK_SDK_AVAILABLE = True
+except ImportError:
+    print("⚠️  slack_sdk 모듈 없음. pip install slack-sdk 실행 필요")
+    SLACK_SDK_AVAILABLE = False
+
 app = Flask(__name__)
 CORS(app)
 
@@ -50,110 +61,178 @@ WAF_ID     = os.environ.get("WAF_ID",     "db5db7cb-bba8-44df-840f-ae4243dc1d93"
 waf_client = boto3.client("wafv2", region_name=AWS_REGION)
 
 # ==========================================
-# AWS SNS 설정 (Slack 알림용)
+# Slack 설정 (SNS 없이 직접 연동)
 # ==========================================
-SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
-ENABLE_SLACK_NOTIFICATIONS = os.environ.get("ENABLE_SLACK_NOTIFICATIONS", "true").lower() == "true"
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
+SLACK_CHANNEL   = os.environ.get("SLACK_CHANNEL", "#보안-알림")
 
-sns_client = None
-if ENABLE_SLACK_NOTIFICATIONS and SNS_TOPIC_ARN:
-    try:
-        sns_client = boto3.client("sns", region_name=AWS_REGION)
-        print(f"✅ SNS 클라이언트 초기화 완료: {SNS_TOPIC_ARN}")
-    except Exception as e:
-        print(f"⚠️  SNS 클라이언트 초기화 실패: {e}")
-        sns_client = None
+slack_client = None
+if SLACK_SDK_AVAILABLE and SLACK_BOT_TOKEN:
+    slack_client = WebClient(token=SLACK_BOT_TOKEN)
+    print(f"✅ Slack 클라이언트 초기화 완료 (채널: {SLACK_CHANNEL})")
 else:
-    print("ℹ️  Slack 알림이 비활성화되어 있습니다.")
+    print("ℹ️  Slack 알림 비활성화 (SLACK_BOT_TOKEN 없음 또는 slack_sdk 미설치)")
+
 
 # ==========================================
-# SNS 알림 함수 (Slack 연동)
+# Slack 알림 함수들
 # ==========================================
-def send_slack_notification(action: str, rule_name: str, details: dict = None):
+
+def send_slack_rule_suggested(rule: dict):
     """
-    WAF 룰 변경 시 AWS SNS를 통해 Slack 알림 전송
-    
-    Parameters:
-    - action: 'applied' 또는 'removed'
-    - rule_name: 룰 이름
-    - details: 추가 정보 (priority, timestamp 등)
+    AI 제안 룰이 새로 생성됐을 때 Slack 알림
+    서버 시작 시 generate_rule_groups()에서 호출
     """
-    if not ENABLE_SLACK_NOTIFICATIONS or not sns_client or not SNS_TOPIC_ARN:
+    if not slack_client:
         return False
-    
+
+    risk_score = rule.get('risk_score', 0)
+    if risk_score >= 70:
+        color   = "#dc2626"
+        urgency = ":red_circle: 높음"
+    elif risk_score >= 40:
+        color   = "#f59e0b"
+        urgency = ":yellow_circle: 중간"
+    else:
+        color   = "#10b981"
+        urgency = ":green_circle: 낮음"
+
     try:
-        # 알림 메시지 구성
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        if action == 'applied':
-            emoji = '✅'
-            action_text = '적용됨'
-            color = 'good'
-        elif action == 'removed':
-            emoji = '🗑️'
-            action_text = '제거됨'
-            color = 'warning'
-        else:
-            emoji = 'ℹ️'
-            action_text = action
-            color = '#439FE0'
-        
-        # 메시지 본문
-        subject = f"{emoji} WAF 룰 {action_text}: {rule_name}"
-        
-        message_lines = [
-            f"*WAF 룰 변경 알림*",
-            f"",
-            f"• *액션*: {action_text}",
-            f"• *룰 이름*: `{rule_name}`",
-            f"• *시간*: {timestamp}",
-            f"• *WAF*: {WAF_NAME}",
-        ]
-        
-        if details:
-            if 'priority' in details:
-                message_lines.append(f"• *Priority*: {details['priority']}")
-            if 'applied_at' in details:
-                message_lines.append(f"• *적용 시간*: {details['applied_at']}")
-        
-        message = '\n'.join(message_lines)
-        
-        # SNS 메시지 속성 (Slack 포맷팅용)
-        message_attributes = {
-            'action': {
-                'DataType': 'String',
-                'StringValue': action
-            },
-            'rule_name': {
-                'DataType': 'String',
-                'StringValue': rule_name
-            },
-            'timestamp': {
-                'DataType': 'String',
-                'StringValue': timestamp
-            }
-        }
-        
-        # SNS로 메시지 발행
-        response = sns_client.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Subject=subject,
-            Message=message,
-            MessageAttributes=message_attributes
+        slack_client.chat_postMessage(
+            channel=SLACK_CHANNEL,
+            text=f":shield: AI 제안 룰 생성: {rule.get('name')}",
+            attachments=[
+                {
+                    "color": color,
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "*:shield: AI 제안 룰이 새로 생성되었습니다*"
+                            }
+                        },
+                        {
+                            "type": "section",
+                            "fields": [
+                                {"type": "mrkdwn", "text": f"*룰 이름*\n`{rule.get('name')}`"},
+                                {"type": "mrkdwn", "text": f"*카테고리*\n{rule.get('category')}"},
+                                {"type": "mrkdwn", "text": f"*위험도*\n{urgency} ({risk_score}점)"},
+                                {"type": "mrkdwn", "text": f"*WCU*\n{rule.get('wcu')} WCU"},
+                                {"type": "mrkdwn", "text": f"*탐지 건수*\n{rule.get('total_detections', 0)}건"},
+                                {"type": "mrkdwn", "text": f"*시간*\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"},
+                            ]
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*설명*\n{rule.get('description', '')}"
+                            }
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {"type": "plain_text", "text": ":computer: 대시보드에서 적용"},
+                                    "url": "http://localhost:3000",
+                                    "style": "primary"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
         )
-        
-        print(f"[SNS] ✅ Slack 알림 전송 완료: {subject} (MessageId: {response['MessageId']})")
+        print(f"[Slack] ✅ 제안 룰 알림 전송: {rule.get('name')}")
         return True
-        
-    except Exception as e:
-        print(f"[SNS] ⚠️ Slack 알림 전송 실패: {e}")
-        # 알림 실패는 룰 적용/제거 작업을 막지 않음
+
+    except SlackApiError as e:
+        print(f"[Slack] ❌ 알림 실패: {e.response['error']}")
+        return False
+
+
+def send_slack_rule_applied(rule_name: str, priority: int):
+    """
+    룰이 실제 AWS WAF에 적용됐을 때 Slack 알림
+    apply_rule() 엔드포인트에서 호출
+    """
+    if not slack_client:
+        return False
+
+    try:
+        slack_client.chat_postMessage(
+            channel=SLACK_CHANNEL,
+            text=f":white_check_mark: WAF 룰 적용 완료: {rule_name}",
+            attachments=[
+                {
+                    "color": "#10b981",
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*:white_check_mark: AWS WAF 룰이 실제로 적용되었습니다*\n"
+                                        f"• 룰명: `{rule_name}`\n"
+                                        f"• Priority: {priority}\n"
+                                        f"• WAF: `{WAF_NAME}`\n"
+                                        f"• 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                        f"• 모드: *Block 활성화* (실제 차단)"
+                            }
+                        }
+                    ]
+                }
+            ]
+        )
+        print(f"[Slack] ✅ 적용 알림 전송: {rule_name}")
+        return True
+
+    except SlackApiError as e:
+        print(f"[Slack] ❌ 적용 알림 실패: {e.response['error']}")
+        return False
+
+
+def send_slack_rule_removed(rule_name: str):
+    """
+    룰이 AWS WAF에서 제거됐을 때 Slack 알림
+    remove_rule() 엔드포인트에서 호출
+    """
+    if not slack_client:
+        return False
+
+    try:
+        slack_client.chat_postMessage(
+            channel=SLACK_CHANNEL,
+            text=f":wastebasket: WAF 룰 제거: {rule_name}",
+            attachments=[
+                {
+                    "color": "#f59e0b",
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*:wastebasket: AWS WAF 룰이 제거되었습니다*\n"
+                                        f"• 룰명: `{rule_name}`\n"
+                                        f"• WAF: `{WAF_NAME}`\n"
+                                        f"• 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            }
+                        }
+                    ]
+                }
+            ]
+        )
+        print(f"[Slack] ✅ 제거 알림 전송: {rule_name}")
+        return True
+
+    except SlackApiError as e:
+        print(f"[Slack] ❌ 제거 알림 실패: {e.response['error']}")
         return False
 
 
 # ==========================================
 # UI 룰 이름 → AWS WAF 실제 룰 매핑 테이블
-# "AI-Enhanced-..." 이름을 실제 AWS 구성으로 변환
 # ==========================================
 RULE_DEFINITIONS = {
     "AI-Enhanced-AWS-AWSManagedRulesAmazonIpReputationList": {
@@ -205,11 +284,6 @@ def _get_web_acl():
 
 
 def _build_waf_rule(rule_name: str, priority: int) -> dict:
-    """
-    UI 룰 이름으로 실제 AWS WAF Rule 객체 생성
-    - Managed Rule  → OverrideAction: None  (룰 자체 Block 동작 활성화)
-    - Custom Rule   → Action: Block         (직접 차단)
-    """
     defn = RULE_DEFINITIONS.get(rule_name)
     if not defn:
         raise ValueError(f"알 수 없는 룰 이름입니다: {rule_name}")
@@ -226,14 +300,13 @@ def _build_waf_rule(rule_name: str, priority: int) -> dict:
                     "Name": defn["managed_name"],
                 }
             },
-            "OverrideAction": {"None": {}},  # Count가 아닌 실제 Block 활성화
+            "OverrideAction": {"None": {}},
             "VisibilityConfig": {
                 "SampledRequestsEnabled": True,
                 "CloudWatchMetricsEnabled": True,
                 "MetricName": rule_name,
             },
         }
-
     elif rtype == "rate_based":
         return {
             "Name": rule_name,
@@ -251,7 +324,6 @@ def _build_waf_rule(rule_name: str, priority: int) -> dict:
                 "MetricName": rule_name,
             },
         }
-
     elif rtype == "geo":
         return {
             "Name": rule_name,
@@ -341,7 +413,7 @@ class DashboardDataStore:
 
             risk_score_after = max(risk_score_before - 20, 15)
 
-            self.rules_after.append({
+            rule_after = {
                 'id': f"RULE-AFTER-{rule_group['id'].split('#')[1]}",
                 'name': f"AI-Enhanced-{rule_group['name']}",
                 'wcu': rule_group['wcu'],
@@ -357,7 +429,11 @@ class DashboardDataStore:
                 'improvements': ['LLM 기반 컨텍스트 분석으로 오탐률 75% 감소', '정상 트래픽 화이트리스트 자동 생성', '실시간 위협 인텔리전스 통합', '공격 패턴 학습 및 자동 업데이트'],
                 'effectiveness': f"{stats.get('blocked_count', 0) + stats.get('allowed_count', 0)}건 차단 (개선), 0건 오탐",
                 'expected_effect': f'오탐률 75% 감소, 탐지율 {min(95, 80 + stats["total_count"] // 10)}% 향상, 위험도 {risk_score_before - risk_score_after}% 감소'
-            })
+            }
+            self.rules_after.append(rule_after)
+
+            # ★ AI 제안 룰 생성 시 Slack 알림
+            send_slack_rule_suggested(rule_after)
 
     def add_rule_before(self, rule: Dict[str, Any]):
         self.rules_before.append(rule)
@@ -496,11 +572,11 @@ def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
         terminating_rule = rule_group.get('terminatingRule')
         if terminating_rule:
             rule_id = terminating_rule.get('ruleId', '')
-            if 'SizeRestrictions' in rule_id:   attack_type = 'Size Restrictions Violation'
+            if 'SizeRestrictions' in rule_id:        attack_type = 'Size Restrictions Violation'
             elif 'SQLi' in rule_id or 'SQL' in rule_id: attack_type = 'SQL Injection'
-            elif 'XSS' in rule_id:              attack_type = 'Cross-Site Scripting (XSS)'
+            elif 'XSS' in rule_id:                   attack_type = 'Cross-Site Scripting (XSS)'
             elif 'RFI' in rule_id or 'LFI' in rule_id:  attack_type = 'File Inclusion'
-            elif 'CommandInjection' in rule_id: attack_type = 'Command Injection'
+            elif 'CommandInjection' in rule_id:      attack_type = 'Command Injection'
             break
 
     labels = log_entry.get('labels', [])
@@ -553,13 +629,13 @@ def parse_waf_log(log_entry: Dict[str, Any]) -> Dict[str, Any]:
     timestamp = datetime.fromtimestamp(timestamp_ms / 1000.0).isoformat() if timestamp_ms > 0 else datetime.now().isoformat()
 
     risk_score = 20
-    if 'SQL Injection' in attack_type:     risk_score = 85
-    elif 'XSS' in attack_type:            risk_score = 80
-    elif 'Command Injection' in attack_type: risk_score = 90
-    elif 'Path Traversal' in attack_type:  risk_score = 75
-    elif 'File Inclusion' in attack_type:  risk_score = 85
-    elif action == 'BLOCK':               risk_score = 95
-    elif action == 'COUNT':               risk_score = 60
+    if 'SQL Injection' in attack_type:        risk_score = 85
+    elif 'XSS' in attack_type:               risk_score = 80
+    elif 'Command Injection' in attack_type:  risk_score = 90
+    elif 'Path Traversal' in attack_type:     risk_score = 75
+    elif 'File Inclusion' in attack_type:     risk_score = 85
+    elif action == 'BLOCK':                   risk_score = 95
+    elif action == 'COUNT':                   risk_score = 60
     elif 'Normal' in attack_type or 'Allowed' in attack_type: risk_score = 10
 
     response_code = log_entry.get('responseCodeSent')
@@ -767,17 +843,11 @@ def theme():
 
 
 # ==========================================
-# ★ 핵심 변경: apply_rule / remove_rule
-#   실제 AWS WAF API 호출
+# ★ apply_rule / remove_rule (실제 AWS WAF + Slack 알림)
 # ==========================================
 
 @app.route('/api/apply-rule', methods=['POST'])
 def apply_rule():
-    """
-    AI 제안 룰을 실제 AWS WAF에 적용 (Block 모드)
-    - Managed Rule : OverrideAction None  → 룰 자체 Block 동작 활성화
-    - Custom Rule  : Action Block         → 직접 차단
-    """
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -790,16 +860,13 @@ def apply_rule():
         if rule_name not in RULE_DEFINITIONS:
             return jsonify({'error': f'알 수 없는 룰입니다: {rule_name}', 'success': False}), 400
 
-        # ── 실제 AWS WAF 호출 ─────────────────────────────────────────
         lock_token, web_acl = _get_web_acl()
         existing_rules = web_acl.get("Rules", [])
 
-        # 중복 체크
         for r in existing_rules:
             if r["Name"] == rule_name:
                 return jsonify({'success': True, 'message': f'이미 WAF에 적용된 룰입니다: {rule_name}', 'rule_name': rule_name, 'already_exists': True})
 
-        # Priority 자동 계산
         new_priority = (max(r["Priority"] for r in existing_rules) + 1) if existing_rules else 10
         new_rule = _build_waf_rule(rule_name, new_priority)
 
@@ -810,21 +877,12 @@ def apply_rule():
             VisibilityConfig=web_acl["VisibilityConfig"],
             LockToken=lock_token,
         )
-        # ──────────────────────────────────────────────────────────────
 
         print(f"[apply_rule] ✅ AWS WAF 적용 완료: {rule_name} (Priority: {new_priority})")
-        
-        # Slack 알림 전송
-        applied_at = data.get('applied_at', datetime.now().isoformat())
-        send_slack_notification(
-            action='applied',
-            rule_name=rule_name,
-            details={
-                'priority': new_priority,
-                'applied_at': applied_at
-            }
-        )
-        
+
+        # ★ 룰 적용 완료 Slack 알림
+        send_slack_rule_applied(rule_name, new_priority)
+
         return jsonify({'success': True, 'message': f'룰이 AWS WAF에 실제로 적용되었습니다: {rule_name}', 'rule_name': rule_name, 'priority': new_priority})
 
     except ClientError as e:
@@ -840,9 +898,6 @@ def apply_rule():
 
 @app.route('/api/remove-rule', methods=['POST'])
 def remove_rule():
-    """
-    적용된 룰을 실제 AWS WAF에서 제거
-    """
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -852,7 +907,6 @@ def remove_rule():
         if not rule_name:
             return jsonify({'error': 'rule_name is required', 'success': False}), 400
 
-        # ── 실제 AWS WAF 호출 ─────────────────────────────────────────
         lock_token, web_acl = _get_web_acl()
         existing_rules = web_acl.get("Rules", [])
         new_rules = [r for r in existing_rules if r["Name"] != rule_name]
@@ -867,19 +921,12 @@ def remove_rule():
             VisibilityConfig=web_acl["VisibilityConfig"],
             LockToken=lock_token,
         )
-        # ──────────────────────────────────────────────────────────────
 
         print(f"[remove_rule] ✅ AWS WAF 제거 완료: {rule_name}")
-        
-        # Slack 알림 전송
-        send_slack_notification(
-            action='removed',
-            rule_name=rule_name,
-            details={
-                'removed_at': datetime.now().isoformat()
-            }
-        )
-        
+
+        # ★ 룰 제거 Slack 알림
+        send_slack_rule_removed(rule_name)
+
         return jsonify({'success': True, 'message': f'룰이 AWS WAF에서 제거되었습니다: {rule_name}', 'rule_name': rule_name})
 
     except ClientError as e:
@@ -893,10 +940,6 @@ def remove_rule():
 
 @app.route('/api/waf-sync', methods=['GET'])
 def waf_sync():
-    """
-    실제 AWS WAF에 현재 적용된 룰 목록 조회
-    프론트엔드가 페이지 로드 시 이 API를 호출해서 UI ↔ AWS 상태 동기화
-    """
     try:
         _, web_acl = _get_web_acl()
         applied = [r["Name"] for r in web_acl.get("Rules", [])]
@@ -923,8 +966,7 @@ def get_risk_calculation():
             excluded_types = ['Normal Traffic', 'Allowed Traffic', 'Debug Resource Request']
             attack_logs = sum(1 for log in data_store.logs if log.get('attack_type', 'Unknown') not in excluded_types)
             return jsonify({
-                'success': True,
-                **result,
+                'success': True, **result,
                 'total_logs': total_logs,
                 'critical_logs':    sum(1 for log in data_store.logs if log.get('risk_score', 0) >= 85),
                 'high_risk_logs':   sum(1 for log in data_store.logs if 70 <= log.get('risk_score', 0) < 85),
@@ -947,7 +989,6 @@ def get_risk_calculation():
 
 @app.route('/api/apply-rules', methods=['POST'])
 def apply_rules():
-    """선택된 WAF 룰 적용 (레거시 - 하위 호환성)"""
     try:
         data = request.get_json(silent=True)
         if not data:
@@ -980,40 +1021,27 @@ def download_report():
             font_name = 'Helvetica'
 
         buffer = BytesIO()
-        
-        # PDF 파일명 및 제목 생성
         report_title = f'WAF_로그_및_이벤트_분석_보고서_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        
-        doc = SimpleDocTemplate(
-            buffer, 
-            pagesize=A4, 
-            topMargin=0.5*inch, 
-            bottomMargin=0.5*inch,
-            title=report_title,  # PDF 메타데이터 제목 설정
-            author='WAF Security Dashboard',
-            subject='WAF 로그 및 이벤트 분석 보고서'
-        )
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch,
+                                title=report_title, author='WAF Security Dashboard',
+                                subject='WAF 로그 및 이벤트 분석 보고서')
         story = []
         styles = getSampleStyleSheet()
-        
-        # 색상 정의 (완전 흑백 처리)
-        black = colors.HexColor('#000000')
-        dark_gray = colors.HexColor('#333333')
-        medium_gray = colors.HexColor('#666666')
-        light_gray = colors.HexColor('#CCCCCC')
+
+        black          = colors.HexColor('#000000')
+        dark_gray      = colors.HexColor('#333333')
+        medium_gray    = colors.HexColor('#666666')
+        light_gray     = colors.HexColor('#CCCCCC')
         very_light_gray = colors.HexColor('#F5F5F5')
-        white = colors.white
-        
+        white          = colors.white
+
         title_style   = ParagraphStyle('CT', parent=styles['Heading1'], fontName=font_name, fontSize=24, textColor=black, spaceAfter=30, alignment=1)
         heading_style = ParagraphStyle('CH', parent=styles['Heading2'], fontName=font_name, fontSize=16, textColor=dark_gray, spaceAfter=12, spaceBefore=12)
         normal_style  = ParagraphStyle('CN', parent=styles['Normal'],   fontName=font_name, fontSize=10, leading=14, textColor=black)
 
-        # 제목 및 생성 정보
         story.append(Paragraph('WAF 로그 및 이벤트 분석 보고서', title_style))
         story.append(Paragraph(f'생성일시: {datetime.now().strftime("%Y년 %m월 %d일 %H:%M:%S")}', normal_style))
         story.append(Spacer(1, 0.2*inch))
-        
-        # Host ARN 정보 추가
         host_arn = os.environ.get('WAF_ARN', f'arn:aws:elasticloadbalancing:{AWS_REGION}:683123960885:loadbalancer/app/vulnboard-alb/...')
         story.append(Paragraph(f'분석 대상 리소스: {host_arn}', normal_style))
         story.append(Spacer(1, 0.3*inch))
@@ -1084,17 +1112,13 @@ def download_report():
         story.append(Spacer(1, 0.1*inch))
 
         for idx, rule in enumerate(data_store.rules_after[:3], 1):
-            # 룰별 상세 기대효과 생성
             detailed_effects = [
-                f'• 오탐률 75% 감소: 정상 트래픽 화이트리스트 자동 생성으로 오탐 최소화',
-                f'• 탐지율 95% 향상: LLM 기반 컨텍스트 분석으로 정교한 공격 패턴 식별',
-                f'• 실시간 대응: 최신 위협 인텔리전스 통합으로 제로데이 공격 즉각 차단',
-                f'• 운영 효율성: 자동 학습 및 업데이트로 수동 관리 시간 70% 절감',
-                f'• 비즈니스 연속성: 정상 서비스 중단 없이 보안 강화 (가용성 99.9% 유지)'
+                '• 오탐률 75% 감소: 정상 트래픽 화이트리스트 자동 생성으로 오탐 최소화',
+                '• 탐지율 95% 향상: LLM 기반 컨텍스트 분석으로 정교한 공격 패턴 식별',
+                '• 실시간 대응: 최신 위협 인텔리전스 통합으로 제로데이 공격 즉각 차단',
+                '• 운영 효율성: 자동 학습 및 업데이트로 수동 관리 시간 70% 절감',
+                '• 비즈니스 연속성: 정상 서비스 중단 없이 보안 강화 (가용성 99.9% 유지)'
             ]
-            
-            effects_text = '<br/>'.join(detailed_effects)
-            
             t = Table([
                 ['룰 이름', rule.get('name','N/A')],
                 ['카테고리', rule.get('category', 'N/A')],
@@ -1106,7 +1130,6 @@ def download_report():
                 ['AI 분석 결과', rule.get('cause','N/A')],
                 ['개선된 조치', rule.get('action','N/A')]
             ], colWidths=[1.8*inch, 4.2*inch])
-            
             t.setStyle(TableStyle([
                 ('BACKGROUND',(0,0),(0,-1), very_light_gray), ('FONTNAME',(0,0),(-1,-1), font_name),
                 ('FONTSIZE',(0,0),(-1,-1), 8), ('ALIGN',(0,0),(0,-1),'RIGHT'), ('ALIGN',(1,0),(1,-1),'LEFT'),
@@ -1115,75 +1138,59 @@ def download_report():
                 ('TOPPADDING',(0,0),(-1,-1),5), ('BOTTOMPADDING',(0,0),(-1,-1),5),
                 ('TEXTCOLOR',(0,0),(-1,-1), black)
             ]))
-            story.append(Paragraph(f'개선 후 룰 #{idx}', ParagraphStyle('RuleTitle', parent=normal_style, fontSize=10, fontName=font_name, textColor=dark_gray, fontWeight='bold')))
+            story.append(Paragraph(f'개선 후 룰 #{idx}', ParagraphStyle('RuleTitle', parent=normal_style, fontSize=10, fontName=font_name, textColor=dark_gray)))
             story.append(t)
             story.append(Spacer(1, 0.1*inch))
-            
-            # 상세 기대효과 섹션
-            story.append(Paragraph('기대 효과:', ParagraphStyle('EffectTitle', parent=normal_style, fontSize=9, fontName=font_name, textColor=dark_gray, fontWeight='bold')))
+            story.append(Paragraph('기대 효과:', ParagraphStyle('EffectTitle', parent=normal_style, fontSize=9, fontName=font_name, textColor=dark_gray)))
             for effect in detailed_effects:
                 story.append(Paragraph(effect, ParagraphStyle('Effect', parent=normal_style, fontSize=8, fontName=font_name, leftIndent=10, spaceBefore=2, spaceAfter=2, textColor=black)))
             story.append(Spacer(1, 0.2*inch))
 
-        # 기대 효과 섹션 추가
         story.append(PageBreak())
         story.append(Paragraph('4. AI 기반 WAF 개선 기대 효과', heading_style))
         story.append(Spacer(1, 0.2*inch))
-        
-        # 정량적 효과
         story.append(Paragraph('4-1. 정량적 개선 효과', ParagraphStyle('SubH', parent=normal_style, fontSize=12, fontName=font_name, textColor=dark_gray, spaceBefore=6, spaceAfter=6)))
-        
+
         quantitative_effects = [
             ['지표', '개선 전', '개선 후', '개선율'],
             ['오탐률 (False Positive)', '25%', '6.25%', '↓ 75%'],
             ['탐지율 (Detection Rate)', '80%', '95%', '↑ 18.75%'],
-            ['평균 위험도', f'{max([r.get("risk_score", 0) for r in data_store.rules_before[:3]])}점', f'{max([r.get("risk_score", 0) for r in data_store.rules_after[:3]])}점', f'↓ {max([r.get("risk_score", 0) for r in data_store.rules_before[:3]]) - max([r.get("risk_score", 0) for r in data_store.rules_after[:3]])}점'],
+            ['평균 위험도',
+             f'{max([r.get("risk_score",0) for r in data_store.rules_before[:3]] or [0])}점',
+             f'{max([r.get("risk_score",0) for r in data_store.rules_after[:3]] or [0])}점',
+             f'↓ {max([r.get("risk_score",0) for r in data_store.rules_before[:3]] or [0]) - max([r.get("risk_score",0) for r in data_store.rules_after[:3]] or [0])}점'],
             ['정상 트래픽 차단', '높음', '최소화', '↓ 80%']
         ]
-        
         quant_table = Table(quantitative_effects, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
         quant_table.setStyle(TableStyle([
             ('BACKGROUND', (0,0),(-1,0), dark_gray), ('TEXTCOLOR', (0,0),(-1,0), colors.whitesmoke),
             ('ALIGN', (0,0),(-1,-1), 'CENTER'), ('FONTNAME', (0,0),(-1,-1), font_name),
             ('FONTSIZE', (0,0),(-1,0), 11), ('FONTSIZE', (0,1),(-1,-1), 9),
             ('BOTTOMPADDING', (0,0),(-1,0), 10), ('BACKGROUND', (0,1),(-1,-1), very_light_gray),
-            ('GRID', (0,0),(-1,-1), 1, light_gray),
-            ('VALIGN', (0,0),(-1,-1), 'MIDDLE'), ('TEXTCOLOR', (0,1),(-1,-1), black)
+            ('GRID', (0,0),(-1,-1), 1, light_gray), ('VALIGN', (0,0),(-1,-1), 'MIDDLE'),
+            ('TEXTCOLOR', (0,1),(-1,-1), black)
         ]))
         story.append(quant_table)
         story.append(Spacer(1, 0.3*inch))
-        
-        # 정성적 효과
+
         story.append(Paragraph('4-2. 정성적 개선 효과', ParagraphStyle('SubH', parent=normal_style, fontSize=12, fontName=font_name, textColor=dark_gray, spaceBefore=6, spaceAfter=6)))
-        
-        qualitative_effects = [
-            '• 실시간 위협 인텔리전스 통합으로 최신 공격 패턴에 즉각 대응',
-            '• LLM 기반 컨텍스트 분석을 통한 정교한 공격 탐지 및 정상 트래픽 보호',
-            '• 자동 화이트리스트 생성으로 운영 부담 감소 및 사용자 경험 개선',
-            '• 공격 패턴 학습 및 자동 업데이트로 지속적인 보안 강화',
-            '• 보안 담당자의 수동 검토 시간 70% 절감',
-            '• 비즈니스 연속성 보장: 정상 서비스 중단 최소화',
-            '• 규정 준수 강화: OWASP Top 10 및 주요 보안 표준 자동 대응',
-            '• 비용 효율성: 오탐으로 인한 불필요한 대응 비용 감소'
-        ]
-        
-        for effect in qualitative_effects:
+        for effect in ['• 실시간 위협 인텔리전스 통합으로 최신 공격 패턴에 즉각 대응',
+                       '• LLM 기반 컨텍스트 분석을 통한 정교한 공격 탐지 및 정상 트래픽 보호',
+                       '• 자동 화이트리스트 생성으로 운영 부담 감소 및 사용자 경험 개선',
+                       '• 공격 패턴 학습 및 자동 업데이트로 지속적인 보안 강화',
+                       '• 보안 담당자의 수동 검토 시간 70% 절감',
+                       '• 비즈니스 연속성 보장: 정상 서비스 중단 최소화',
+                       '• 규정 준수 강화: OWASP Top 10 및 주요 보안 표준 자동 대응',
+                       '• 비용 효율성: 오탐으로 인한 불필요한 대응 비용 감소']:
             story.append(Paragraph(effect, ParagraphStyle('Bullet', parent=normal_style, fontSize=10, fontName=font_name, leftIndent=20, spaceBefore=4, spaceAfter=4, textColor=black)))
-        
+
         story.append(Spacer(1, 0.3*inch))
-        
-        # 장기적 효과
         story.append(Paragraph('4-3. 장기적 보안 효과', ParagraphStyle('SubH', parent=normal_style, fontSize=12, fontName=font_name, textColor=dark_gray, spaceBefore=6, spaceAfter=6)))
-        
-        long_term_effects = [
-            '• 누적 학습 데이터 기반 보안 정책 고도화',
-            '• 제로데이 공격 대응 능력 향상',
-            '• 보안 운영 자동화를 통한 인력 효율성 극대화',
-            '• 데이터 기반 보안 투자 의사결정 지원',
-            '• 조직 전체의 보안 성숙도 향상'
-        ]
-        
-        for effect in long_term_effects:
+        for effect in ['• 누적 학습 데이터 기반 보안 정책 고도화',
+                       '• 제로데이 공격 대응 능력 향상',
+                       '• 보안 운영 자동화를 통한 인력 효율성 극대화',
+                       '• 데이터 기반 보안 투자 의사결정 지원',
+                       '• 조직 전체의 보안 성숙도 향상']:
             story.append(Paragraph(effect, ParagraphStyle('Bullet', parent=normal_style, fontSize=10, fontName=font_name, leftIndent=20, spaceBefore=4, spaceAfter=4, textColor=black)))
 
         story.append(Spacer(1, 0.3*inch))
@@ -1196,26 +1203,11 @@ def download_report():
 
         doc.build(story)
         buffer.seek(0)
-        
-        # 파일명은 이미 위에서 생성한 report_title 사용
         filename = f'{report_title}.pdf'
-        
-        # Flask 버전에 따라 download_name 또는 attachment_filename 사용
         try:
-            return send_file(
-                buffer, 
-                mimetype='application/pdf', 
-                as_attachment=True, 
-                download_name=filename
-            )
+            return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
         except TypeError:
-            # 구버전 Flask의 경우
-            return send_file(
-                buffer, 
-                mimetype='application/pdf', 
-                as_attachment=True, 
-                attachment_filename=filename
-            )
+            return send_file(buffer, mimetype='application/pdf', as_attachment=True, attachment_filename=filename)
 
     except Exception as e:
         import traceback; traceback.print_exc()
