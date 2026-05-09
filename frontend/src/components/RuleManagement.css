@@ -1044,3 +1044,295 @@
   color: var(--color-primary);
   font-size: 1rem;
 }
+
+/* =============================================
+   RuleManagement.css 맨 아래에 추가할 스타일
+   AI 제안 룰 vs 적용된 룰 모달 구분
+   ============================================= */
+
+/* 적용된 룰 상세보기 버튼 - 색상 구분 */
+.applied-detail-btn {
+  background: linear-gradient(135deg, #059669, #10b981) !important;
+}
+
+.applied-detail-btn:hover {
+  box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3) !important;
+}
+
+/* 모달 헤더 타입별 색상 */
+.header-suggested {
+  border-left: 4px solid #3b82f6;
+}
+
+.header-applied {
+  border-left: 4px solid #10b981;
+}
+
+/* 타입 뱃지 */
+.modal-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.modal-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.badge-suggested {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-applied {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* AI 제안 이유 박스 */
+.suggest-reason-box {
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.suggest-reason-box p {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.detection-highlight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  color: #92400e;
+}
+
+.detection-highlight i {
+  color: #f59e0b;
+}
+
+/* 3칸 통계 그리드 */
+.stats-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.stat-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stat-box-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-box-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.stat-box-red .stat-box-value { color: #dc2626; }
+.stat-box-green .stat-box-value { color: #10b981; }
+
+/* 공격 패턴 리스트 */
+.pattern-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pattern-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.pattern-list li i {
+  color: #f59e0b;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.pattern-list li i.fa-ban {
+  color: #dc2626;
+}
+
+/* 기대효과 리스트 */
+.effect-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.effect-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  background: rgba(16, 185, 129, 0.06);
+  border-left: 3px solid #10b981;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.effect-list li i {
+  color: #10b981;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.applied-effect-list li {
+  background: rgba(16, 185, 129, 0.08);
+  border-left-color: #059669;
+}
+
+/* 비용 정보 박스 */
+.cost-info-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+
+.cost-row:last-child { border-bottom: none; }
+.cost-row span { color: var(--text-secondary); }
+.cost-row strong { color: var(--text-primary); }
+
+.cost-note {
+  padding: 0.6rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  border-top: 1px dashed var(--border-color);
+  margin: 0;
+}
+
+/* 적용 정보 박스 */
+.applied-info-box {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.applied-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  gap: 1rem;
+}
+
+.applied-info-row:last-child { border-bottom: none; }
+
+.applied-info-row span:first-child {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.applied-info-row span:first-child i { color: #10b981; }
+
+.mode-block {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+/* 적용 범위 */
+.scope-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.scope-list li {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* 제거 경고 박스 */
+.remove-warning-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.remove-warning-box i {
+  color: #dc2626;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.remove-warning-box p { margin: 0; }
