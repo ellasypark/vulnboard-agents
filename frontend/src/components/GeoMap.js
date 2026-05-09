@@ -106,39 +106,32 @@ function GeoMap({ data, isDarkMode }) {
       }
     };
   }, [data, isDarkMode]);
-
-  // 범례 데이터
-  const legend = data?.legend || {};
-  const ranges = legend.ranges || [];
-  const colors = legend.colors || [];
-
+  
   return (
     <div className="chart-wrapper">
       <h2 className="section-title">
         <i className="fas fa-globe"></i> 지역별 트래픽
       </h2>
       <div className="card">
-        <div className="map-container">
-          <div ref={mapRef} id="geoMap"></div>
-        </div>
-        
-        {/* 하단 범례 (빨간색 계열) */}
-        {ranges.length > 0 && (
-          <div className="map-legend-bottom">
-            <div className="legend-title">공격 빈도</div>
-            <div className="legend-scale">
-              {ranges.map((range, index) => (
-                <div key={index} className="legend-item-bottom">
-                  <div 
-                    className="legend-color-box" 
-                    style={{ backgroundColor: colors[index] }}
-                  ></div>
-                  <span className="legend-label">{range}</span>
-                </div>
-              ))}
-            </div>
+        <div className="card-header">
+          <h3 className="card-title">
+            <i className="fas fa-map-marked-alt"></i>
+            Geographic Distribution
+          </h3>
+          <div className="card-actions">
+            <button className="card-action-btn" title="Refresh">
+              <i className="fas fa-sync-alt"></i>
+            </button>
+            <button className="card-action-btn" title="Expand">
+              <i className="fas fa-expand"></i>
+            </button>
           </div>
-        )}
+        </div>
+        <div className="card-body">
+          <div className="map-container">
+            <div ref={mapRef} id="geoMap"></div>
+          </div>
+        </div>
       </div>
     </div>
   );

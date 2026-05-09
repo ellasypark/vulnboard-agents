@@ -1,0 +1,445 @@
+/* ============================================
+   디자인 시스템 - 색상 팔레트 (CSS 변수)
+   ============================================ */
+
+:root {
+  /* 기본 색상 팔레트 */
+  --color-primary: #1970DF;
+  --color-primary-dark: #172A3D;
+  --color-light-gray: #F5F5F5;
+  --color-gray: #ECECEC;
+  --color-black: #17293D;
+  --color-secondary-lightblue: #609EFF;
+  --color-secondary-purple: #5949D3;
+  --color-secondary-bluepurple: #3F43AD;
+  --color-accent-bg: #9EF06F;
+  --color-alert-red: #FB4C2E;
+  
+  /* 그라데이션 */
+  --gradient-official: linear-gradient(to right, #3D88FE 0%, #A6D0FF 100%);
+  
+  /* 상태 색상 (기본 팔레트 기반) */
+  --color-success: #9EF06F;
+  --color-warning: #FFA726;
+  --color-danger: #FB4C2E;
+  --color-info: #609EFF;
+}
+
+/* ============================================
+   라이트 테마 (Light Mode)
+   ============================================ */
+
+[data-theme="light"] {
+  /* 배경 */
+  --bg-primary: #F5F5F5;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #FAFAFA;
+  --bg-panel: #FFFFFF;
+  --bg-hover: rgba(25, 112, 223, 0.05);
+  
+  /* 텍스트 */
+  --text-primary: #17293D;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --text-inverse: #FFFFFF;
+  
+  /* 테두리 */
+  --border-primary: #ECECEC;
+  --border-secondary: #E5E7EB;
+  --border-focus: #1970DF;
+  
+  /* 그림자 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* 차트 색상 */
+  --chart-grid: rgba(0, 0, 0, 0.1);
+  --chart-text: #6B7280;
+  --chart-tooltip-bg: #FFFFFF;
+  --chart-tooltip-border: #ECECEC;
+}
+
+/* ============================================
+   다크 테마 (Dark Mode)
+   ============================================ */
+
+[data-theme="dark"] {
+  /* 배경 */
+  --bg-primary: #0F1419;
+  --bg-secondary: #172A3D;
+  --bg-tertiary: #1E3A52;
+  --bg-panel: rgba(23, 42, 61, 0.6);
+  --bg-hover: rgba(96, 158, 255, 0.1);
+  
+  /* 텍스트 */
+  --text-primary: #F9FAFB;
+  --text-secondary: #D1D5DB;
+  --text-tertiary: #9CA3AF;
+  --text-inverse: #17293D;
+  
+  /* 테두리 */
+  --border-primary: rgba(255, 255, 255, 0.1);
+  --border-secondary: rgba(255, 255, 255, 0.05);
+  --border-focus: #609EFF;
+  
+  /* 그림자 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+  
+  /* 차트 색상 */
+  --chart-grid: rgba(255, 255, 255, 0.1);
+  --chart-text: #D1D5DB;
+  --chart-tooltip-bg: #172A3D;
+  --chart-tooltip-border: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   글로벌 스타일
+   ============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.app-modern {
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* ============================================
+   유틸리티 클래스
+   ============================================ */
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.panel:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border-focus);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.panel-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* 버튼 스타일 */
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--color-secondary-lightblue);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.btn-icon {
+  padding: 0.5rem;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* 스크롤바 스타일 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* 반응형 유틸리티 */
+@media (max-width: 768px) {
+  .panel {
+    padding: 1rem;
+  }
+  
+  .panel-title {
+    font-size: 0.75rem;
+  }
+}
+
+/* ============================================
+   지리적 분포 리스트 (Geo List)
+   ============================================ */
+
+.geo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.geo-item {
+  display: grid;
+  grid-template-columns: 120px 1fr 60px;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.geo-country {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.geo-bar-container {
+  position: relative;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.geo-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.geo-count {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* ============================================
+   모던 테이블 (Modern Table)
+   ============================================ */
+
+.modern-table-container {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+}
+
+.modern-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.modern-table thead {
+  background: var(--bg-tertiary);
+  border-bottom: 2px solid var(--border-primary);
+}
+
+.modern-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.modern-table tbody tr {
+  border-bottom: 1px solid var(--border-secondary);
+  transition: background-color 0.2s;
+}
+
+.modern-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.modern-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.modern-table td {
+  padding: 0.875rem 1rem;
+  color: var(--text-primary);
+}
+
+.modern-table code {
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8125rem;
+  color: var(--color-secondary-lightblue);
+}
+
+/* 배지 스타일 */
+.attack-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.action-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.action-badge.block {
+  background: rgba(251, 76, 46, 0.1);
+  color: var(--color-alert-red);
+  border: 1px solid rgba(251, 76, 46, 0.3);
+}
+
+.action-badge.allow {
+  background: rgba(158, 240, 111, 0.1);
+  color: var(--color-accent-bg);
+  border: 1px solid rgba(158, 240, 111, 0.3);
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 24px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.risk-badge.critical {
+  background: rgba(251, 76, 46, 0.15);
+  color: var(--color-alert-red);
+  border: 1px solid rgba(251, 76, 46, 0.4);
+}
+
+.risk-badge.high {
+  background: rgba(255, 167, 38, 0.15);
+  color: #FFA726;
+  border: 1px solid rgba(255, 167, 38, 0.4);
+}
+
+.risk-badge.medium {
+  background: rgba(96, 158, 255, 0.15);
+  color: var(--color-secondary-lightblue);
+  border: 1px solid rgba(96, 158, 255, 0.4);
+}
+
+/* 테이블 반응형 */
+@media (max-width: 768px) {
+  .modern-table {
+    font-size: 0.75rem;
+  }
+  
+  .modern-table th,
+  .modern-table td {
+    padding: 0.5rem;
+  }
+  
+  .geo-item {
+    grid-template-columns: 100px 1fr 50px;
+    gap: 0.5rem;
+  }
+}

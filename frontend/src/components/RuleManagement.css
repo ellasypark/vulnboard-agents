@@ -3,13 +3,18 @@
 }
 
 .section-title {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.section-title i {
+  color: var(--color-primary);
+  font-size: 1.25rem;
 }
 
 .rule-management-grid {
@@ -18,42 +23,53 @@
   gap: 1.5rem;
 }
 
-/* 컬럼 공통 스타일 */
+/* 컬럼 공통 스타일 - Grafana 스타일 */
 .rule-column {
-  background: var(--bg-card);
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
 }
 
 .column-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--border-color);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
 }
 
 .column-header h3 {
   margin: 0;
-  font-size: 1.1rem;
-  color: var(--text-primary);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.column-header h3 i {
+  color: var(--color-primary);
+  font-size: 0.875rem;
 }
 
 .rule-count {
-  background: var(--accent);
+  background: var(--gradient-official);
   color: white;
   padding: 0.25rem 0.75rem;
   border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
 }
 
 /* 룰 리스트 */
@@ -61,6 +77,7 @@
   flex: 1;
   overflow-y: auto;
   max-height: 600px;
+  padding: 1rem;
 }
 
 .rule-list::-webkit-scrollbar {
@@ -68,37 +85,40 @@
 }
 
 .rule-list::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   border-radius: 3px;
 }
 
 .rule-list::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border-primary);
   border-radius: 3px;
 }
 
 .rule-list::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--text-tertiary);
 }
 
-/* 룰 카드 */
+/* 룰 카드 - Grafana 스타일 */
 .rule-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
   padding: 1rem;
   margin-bottom: 0.75rem;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 .rule-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .rule-card.applied {
-  border-color: #10b981;
-  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border-color: var(--color-accent-bg);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(158, 240, 111, 0.05) 100%);
+  box-shadow: 0 0 0 1px rgba(158, 240, 111, 0.2);
 }
 
 .rule-header {
@@ -156,27 +176,28 @@
 .detail-btn {
   width: 100%;
   padding: 0.5rem;
-  background: var(--accent);
+  background: var(--gradient-official);
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .detail-btn:hover {
-  background: #357abd;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(61, 136, 254, 0.3);
 }
 
 .remove-btn {
-  background: #ef4444;
+  background: var(--color-alert-red);
   color: white;
   border: none;
   border-radius: 4px;
@@ -186,12 +207,14 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 .remove-btn:hover {
   background: #dc2626;
   transform: scale(1.1);
+  box-shadow: var(--shadow-md);
 }
 
 /* 빈 상태 */
@@ -220,13 +243,13 @@
   opacity: 0.7;
 }
 
-/* 위험도 게이지 */
+/* 위험도 게이지 - Grafana 스타일 */
 .risk-display {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2rem;
-  padding: 1rem 0;
+  padding: 1.5rem 1rem;
 }
 
 .risk-circle {
@@ -239,7 +262,21 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-secondary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+
+.risk-circle::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  padding: 4px;
+  background: var(--gradient-official);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.3;
 }
 
 .risk-value {
@@ -253,6 +290,8 @@
   color: var(--text-secondary);
   margin-top: 0.5rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .risk-bar-container {
@@ -568,4 +607,184 @@
     width: 100%;
     justify-content: center;
   }
+}
+
+/* 전체 룰 보기 버튼 */
+.view-all-rules-btn {
+  padding: 0.4rem 0.8rem;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.view-all-rules-btn:hover {
+  background: #357abd;
+  transform: translateY(-1px);
+}
+
+/* 큰 모달 */
+.modal-content.large {
+  max-width: 900px;
+  max-height: 85vh;
+}
+
+/* 전체 룰 목록 */
+.all-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.all-rules-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.all-rules-item:hover {
+  border-color: #4a90e2;
+  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.1);
+}
+
+.rule-number {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #4a90e2;
+  color: white;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.rule-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.rule-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rule-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.rule-description {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.rule-stats-row {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.rule-stats-row span {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.remove-btn-small {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.remove-btn-small:hover {
+  background: #dc2626;
+  color: white;
+}
+
+/* 모달 네비게이션 */
+.modal-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.modal-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nav-btn {
+  padding: 0.5rem 1rem;
+  background: #1970DF;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: #172A3D;
+  transform: translateY(-1px);
+}
+
+.nav-btn:disabled {
+  background: #ECECEC;
+  color: #172A3D;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.nav-info {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
 }

@@ -1,3 +1,9 @@
+.App {
+  min-height: 100vh;
+  background: var(--bg-primary);
+  transition: background-color 0.3s ease;
+}
+
 .container {
   max-width: 1600px;
   margin: 0 auto;
@@ -61,6 +67,10 @@
 }
 
 @media (max-width: 768px) {
+  .container {
+    padding: 1rem;
+  }
+  
   .grid-3, .grid-2 {
     grid-template-columns: 1fr;
   }

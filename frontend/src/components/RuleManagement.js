@@ -10,7 +10,10 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
   const [minRisk, setMinRisk] = useState(25);
   const [riskReductionMap, setRiskReductionMap] = useState({});
   const [selectedRule, setSelectedRule] = useState(null);
+  const [selectedRuleIndex, setSelectedRuleIndex] = useState(0);
+  const [selectedRuleType, setSelectedRuleType] = useState('suggested'); // 'suggested' or 'applied'
   const [showModal, setShowModal] = useState(false);
+  const [showAllRulesModal, setShowAllRulesModal] = useState(false);
 
   useEffect(() => {
     if (aiRules && aiRules.length > 0) {
@@ -106,14 +109,29 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     return color;
   };
 
-  const openModal = (rule) => {
+  const openModal = (rule, type = 'suggested') => {
+    const ruleList = type === 'suggested' ? suggestedRules : appliedRules;
+    const index = ruleList.findIndex(r => r.id === rule.id);
     setSelectedRule(rule);
+    setSelectedRuleIndex(index);
+    setSelectedRuleType(type);
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
     setSelectedRule(null);
+    setSelectedRuleIndex(0);
+  };
+
+  const navigateRule = (direction) => {
+    const ruleList = selectedRuleType === 'suggested' ? suggestedRules : appliedRules;
+    const newIndex = selectedRuleIndex + direction;
+    
+    if (newIndex >= 0 && newIndex < ruleList.length) {
+      setSelectedRule(ruleList[newIndex]);
+      setSelectedRuleIndex(newIndex);
+    }
   };
 
   const applyRule = async () => {
@@ -121,19 +139,26 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
 
     try {
       const response = await axios.post('/api/apply-rule', {
-        rule_name: selectedRule.name
+        rule_name: selectedRule.name,
+        applied_at: new Date().toISOString() // 적용 시간 추가
       });
 
       if (response.data.success) {
+        // 적용 시간 정보를 룰에 추가
+        const ruleWithTimestamp = {
+          ...selectedRule,
+          applied_at: new Date().toISOString()
+        };
+        
         setSuggestedRules(prev => prev.filter(r => r.id !== selectedRule.id));
-        setAppliedRules(prev => [...prev, selectedRule]);
+        setAppliedRules(prev => [...prev, ruleWithTimestamp]);
 
         const reduction = Math.max(riskReductionMap[selectedRule.id] || 0, 0);
         const newRisk = Math.max(currentRisk - reduction, minRisk);
         setCurrentRisk(Math.round(newRisk * 10) / 10);
 
         closeModal();
-        alert(`✅ ${selectedRule.name} 룰이 적용되었습니다.\n위험도 -${reduction.toFixed(1)}점 감소`);
+        alert(`✅ ${selectedRule.name} 룰이 적용되었습니다.\n적용 시간: ${new Date().toLocaleString('ko-KR')}\n위험도 -${reduction.toFixed(1)}점 감소`);
       }
     } catch (error) {
       console.error('룰 적용 오류:', error);
@@ -167,9 +192,15 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
   };
 
   const getRiskLevel = () => {
-    if (currentRisk >= 70) return { level: 'HIGH', color: '#dc2626', label: '높음' };
-    if (currentRisk >= 40) return { level: 'MEDIUM', color: '#f59e0b', label: '중간' };
-    return { level: 'LOW', color: '#10b981', label: '낮음' };
+    const displayRisk = Math.min(currentRisk, 100); // 표시는 100까지만
+    const isExceeded = currentRisk > 100;
+    
+    if (isExceeded) {
+      return { level: 'EXCEEDED', color: '#7c2d12', label: '초과', displayRisk: 100 };
+    }
+    if (displayRisk >= 70) return { level: 'HIGH', color: '#dc2626', label: '높음', displayRisk };
+    if (displayRisk >= 40) return { level: 'MEDIUM', color: '#f59e0b', label: '중간', displayRisk };
+    return { level: 'LOW', color: '#10b981', label: '낮음', displayRisk };
   };
 
   const riskInfo = getRiskLevel();
@@ -207,7 +238,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                     <span><i className="fas fa-exclamation-circle"></i> {rule.total_detections || 0}건 탐지</span>
                     <span className="risk-reduction">-{Math.max(riskReductionMap[rule.id] || 0, 0).toFixed(1)}점</span>
                   </div>
-                  <button className="detail-btn" onClick={() => openModal(rule)}>
+                  <button className="detail-btn" onClick={() => openModal(rule, 'suggested')}>
                     <i className="fas fa-info-circle"></i> 상세 보기
                   </button>
                 </div>
@@ -225,7 +256,16 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
         <div className="rule-column applied-rules">
           <div className="column-header">
             <h3><i className="fas fa-check-circle"></i> 적용된 룰</h3>
-            <span className="rule-count">{appliedRules.length}개</span>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span className="rule-count">{appliedRules.length}개</span>
+              <button 
+                className="view-all-rules-btn"
+                onClick={() => setShowAllRulesModal(true)}
+                title="적용된 전체 룰 보기"
+              >
+                <i className="fas fa-list"></i> 전체 보기
+              </button>
+            </div>
           </div>
           <div className="rule-list">
             {appliedRules.length > 0 ? (
@@ -247,7 +287,15 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                   </div>
                   <div className="rule-stats">
                     <span><i className="fas fa-shield-alt"></i> 활성화됨</span>
+                    {rule.applied_at && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        <i className="fas fa-clock"></i> {new Date(rule.applied_at).toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
+                  <button className="detail-btn" onClick={() => openModal(rule, 'applied')}>
+                    <i className="fas fa-info-circle"></i> 상세 보기
+                  </button>
                 </div>
               ))
             ) : (
@@ -268,7 +316,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
           <div className="risk-display">
             <div className="risk-circle" style={{ borderColor: riskInfo.color }}>
               <div className="risk-value" style={{ color: riskInfo.color }}>
-                {currentRisk.toFixed(1)}
+                {riskInfo.displayRisk.toFixed(1)}
               </div>
               <div className="risk-label">{riskInfo.label}</div>
             </div>
@@ -282,7 +330,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                 <div
                   className="risk-bar-fill"
                   style={{
-                    width: `${((currentRisk - minRisk) / (maxRisk - minRisk)) * 100}%`,
+                    width: `${((Math.min(currentRisk, maxRisk) - minRisk) / (maxRisk - minRisk)) * 100}%`,
                     backgroundColor: riskInfo.color
                   }}
                 ></div>
@@ -395,11 +443,100 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
             </div>
 
             <div className="modal-footer">
-              <button className="btn-cancel" onClick={closeModal}>
-                <i className="fas fa-times"></i> 취소
+              <div className="modal-navigation">
+                <button 
+                  className="nav-btn" 
+                  onClick={() => navigateRule(-1)}
+                  disabled={selectedRuleIndex === 0}
+                >
+                  <i className="fas fa-chevron-left"></i> 이전
+                </button>
+                <span className="nav-info">
+                  {selectedRuleIndex + 1} / {(selectedRuleType === 'suggested' ? suggestedRules : appliedRules).length}
+                </span>
+                <button 
+                  className="nav-btn" 
+                  onClick={() => navigateRule(1)}
+                  disabled={selectedRuleIndex === (selectedRuleType === 'suggested' ? suggestedRules : appliedRules).length - 1}
+                >
+                  다음 <i className="fas fa-chevron-right"></i>
+                </button>
+              </div>
+              <div className="modal-actions">
+                <button className="btn-cancel" onClick={closeModal}>
+                  <i className="fas fa-times"></i> 닫기
+                </button>
+                {selectedRuleType === 'suggested' && (
+                  <button className="btn-apply" onClick={applyRule}>
+                    <i className="fas fa-check"></i> 적용
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 전체 룰 보기 모달 */}
+      {showAllRulesModal && (
+        <div className="modal-overlay" onClick={() => setShowAllRulesModal(false)}>
+          <div className="modal-content large" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3><i className="fas fa-list"></i> 적용된 전체 WAF 룰</h3>
+              <button className="modal-close" onClick={() => setShowAllRulesModal(false)}>
+                <i className="fas fa-times"></i>
               </button>
-              <button className="btn-apply" onClick={applyRule}>
-                <i className="fas fa-check"></i> 적용
+            </div>
+
+            <div className="modal-body">
+              <div className="all-rules-list">
+                {appliedRules.length > 0 ? (
+                  appliedRules.map((rule, index) => (
+                    <div key={rule.id} className="all-rules-item">
+                      <div className="rule-number">{index + 1}</div>
+                      <div className="rule-details">
+                        <div className="rule-name-row">
+                          <span className="rule-name">{rule.name}</span>
+                          <span className="rule-wcu">{rule.wcu} WCU</span>
+                        </div>
+                        <div className="rule-meta">
+                          <span
+                            className="rule-tag"
+                            style={{ backgroundColor: getCategoryColor(rule.category), color: 'white' }}
+                          >
+                            {rule.category}
+                          </span>
+                          <span className="rule-description">{rule.description}</span>
+                        </div>
+                        <div className="rule-stats-row">
+                          <span><i className="fas fa-shield-alt"></i> 활성화됨</span>
+                          <span><i className="fas fa-exclamation-circle"></i> {rule.total_detections || 0}건 탐지</span>
+                        </div>
+                      </div>
+                      <button 
+                        className="remove-btn-small" 
+                        onClick={() => {
+                          setShowAllRulesModal(false);
+                          removeRule(rule);
+                        }}
+                        title="룰 제거"
+                      >
+                        <i className="fas fa-times"></i>
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <i className="fas fa-info-circle"></i>
+                    <p>적용된 룰이 없습니다.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-cancel" onClick={() => setShowAllRulesModal(false)}>
+                <i className="fas fa-times"></i> 닫기
               </button>
             </div>
           </div>

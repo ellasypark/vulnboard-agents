@@ -1,19 +1,19 @@
 import React from 'react';
 import { Line } from 'react-chartjs-2';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
+import { useTheme } from '../../../theme/ThemeContext';
+import './ModernCharts.css';
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
+const ModernLineChart = ({ data, title, subtitle }) => {
+  const { isDarkMode } = useTheme();
 
-function HourlyChart({ data, isDarkMode }) {
-  // data는 이제 { '01/15': 5, '01/16': 8, ... } 형식
   const dates = Object.keys(data);
-  const counts = Object.values(data);
+  const values = Object.values(data);
 
   const chartData = {
     labels: dates,
     datasets: [{
-      label: '일별 공격 횟수',
-      data: counts,
+      label: title || '트래픽',
+      data: values,
       borderColor: '#609EFF',
       backgroundColor: (context) => {
         const ctx = context.chart.ctx;
@@ -23,13 +23,13 @@ function HourlyChart({ data, isDarkMode }) {
         return gradient;
       },
       borderWidth: 2,
-      tension: 0.4,
       fill: true,
+      tension: 0.4,
       pointRadius: 0,
       pointHoverRadius: 6,
       pointHoverBackgroundColor: '#609EFF',
       pointHoverBorderColor: '#fff',
-      pointHoverBorderWidth: 2
+      pointHoverBorderWidth: 2,
     }]
   };
 
@@ -41,8 +41,8 @@ function HourlyChart({ data, isDarkMode }) {
       intersect: false,
     },
     plugins: {
-      legend: { 
-        display: false
+      legend: {
+        display: false,
       },
       tooltip: {
         enabled: true,
@@ -68,26 +68,30 @@ function HourlyChart({ data, isDarkMode }) {
         grid: {
           display: true,
           color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-          drawBorder: false
+          drawBorder: false,
         },
         ticks: {
           color: isDarkMode ? '#9CA3AF' : '#6B7280',
-          font: { size: 11 },
+          font: {
+            size: 11,
+          },
           maxRotation: 0,
           autoSkip: true,
-          maxTicksLimit: 8
+          maxTicksLimit: 8,
         }
       },
-      y: { 
+      y: {
         beginAtZero: true,
         grid: {
           display: true,
           color: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-          drawBorder: false
+          drawBorder: false,
         },
         ticks: {
           color: isDarkMode ? '#9CA3AF' : '#6B7280',
-          font: { size: 11 },
+          font: {
+            size: 11,
+          },
           callback: (value) => {
             return value.toLocaleString();
           }
@@ -96,39 +100,13 @@ function HourlyChart({ data, isDarkMode }) {
     }
   };
 
-  const handleExpandClick = () => {
-    window.location.href = '/detailed-analysis';
-  };
-
   return (
-    <div className="chart-wrapper">
-      <h2 className="section-title">
-        <i className="fas fa-chart-line"></i> 날짜별 트래픽 현황
-      </h2>
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">
-            <i className="fas fa-chart-area"></i>
-            Traffic Timeline
-          </h3>
-          <div className="card-actions">
-            <button 
-              className="card-action-btn" 
-              onClick={handleExpandClick}
-              title="Detailed Analysis"
-            >
-              <i className="fas fa-expand-alt"></i>
-            </button>
-          </div>
-        </div>
-        <div className="card-body">
-          <div style={{ height: '300px' }}>
-            <Line data={chartData} options={options} />
-          </div>
-        </div>
+    <div className="modern-chart">
+      <div style={{ height: '300px' }}>
+        <Line data={chartData} options={options} />
       </div>
     </div>
   );
-}
+};
 
-export default HourlyChart;
+export default ModernLineChart;

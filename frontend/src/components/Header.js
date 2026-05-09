@@ -1,7 +1,10 @@
 import React from 'react';
+import { useTheme } from '../theme/ThemeContext';
 import './Header.css';
 
-function Header({ onToggleTheme, onDownloadReport, isDarkMode }) {
+function Header({ onDownloadReport, isDarkMode }) {
+  const { toggleTheme } = useTheme();
+
   const handleDownload = () => {
     // API 서버로 직접 요청
     window.open('http://localhost:5000/api/download-report', '_blank');
@@ -13,7 +16,7 @@ function Header({ onToggleTheme, onDownloadReport, isDarkMode }) {
         <i className="fas fa-shield-alt"></i> WAF 보안 대시보드
       </h1>
       <div className="header-controls">
-        <button className="theme-toggle" onClick={onToggleTheme}>
+        <button className="theme-toggle" onClick={toggleTheme}>
           <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i> 테마 변경
         </button>
         <button className="download-btn" onClick={handleDownload}>

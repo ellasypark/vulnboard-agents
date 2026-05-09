@@ -1,24 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
+import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import Header from './components/Header';
 import GeoMap from './components/GeoMap';
 import HourlyChart from './components/HourlyChart';
 import AttackTypeChart from './components/AttackTypeChart';
 import RuleManagement from './components/RuleManagement';
 import LogTable from './components/LogTable';
+import DetailedAnalysis from './components/DetailedAnalysis';
 
-function App() {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+function AppContent() {
+  const { isDarkMode } = useTheme();
   const [geoData, setGeoData] = useState({});
   const [hourlyData, setHourlyData] = useState({});
   const [attackTypeData, setAttackTypeData] = useState({});
   const [attackTypeColors, setAttackTypeColors] = useState({});
   const [aiRules, setAiRules] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' or 'detailed'
 
   useEffect(() => {
-    loadAllData();
+    // URL 기반 라우팅
+    const path = window.location.pathname;
+    if (path === '/detailed-analysis') {
+      setCurrentView('detailed');
+    } else {
+      setCurrentView('dashboard');
+      loadAllData();
+    }
+
+    // popstate 이벤트 리스너 (뒤로가기 버튼 대응)
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      setCurrentView(path === '/detailed-analysis' ? 'detailed' : 'dashboard');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const loadAllData = async () => {
@@ -42,27 +60,18 @@ function App() {
     }
   };
 
-  const toggleTheme = async () => {
-    const newTheme = !isDarkMode;
-    setIsDarkMode(newTheme);
-    document.body.classList.toggle('dark-mode');
-    
-    try {
-      await axios.post('/api/theme', { theme: newTheme ? 'dark' : 'light' });
-    } catch (error) {
-      console.error('테마 변경 오류:', error);
-      // 에러 발생 시 UI는 이미 변경되었으므로 그대로 유지
-    }
-  };
-
   const downloadReport = () => {
     window.location.href = '/api/download-report';
   };
 
+  // 상세 분석 페이지 표시
+  if (currentView === 'detailed') {
+    return <DetailedAnalysis />;
+  }
+
   return (
     <div className="App">
       <Header 
-        onToggleTheme={toggleTheme}
         onDownloadReport={downloadReport}
         isDarkMode={isDarkMode}
       />
@@ -89,4 +98,13 @@ function App() {
   );
 }
 
+function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
 export default App;
+

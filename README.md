@@ -75,10 +75,23 @@ cd ..
 `.env` 파일을 생성하고 다음 내용을 추가:
 
 ```env
-# S3 설정
+AWS_REGION=ap-northeast-2
+WAF_ARN=your_waf_arn
+WAF_NAME=your_waf_name
+WAF_ID=your_waf_id
+BEDROCK_MODEL=global.anthropic.claude-sonnet-4-6
+PENDING_BLOCKS_TABLE=pending_blocks
+
+# AbuseIPDB API 설정
+ABUSEIPDB_API_KEY=your_abuseipdb_api_key
+
+# S3 WAF 로그 설정
 USE_S3_LOGS=true
+S3_BUCKET=vulnboard-attack-logs
 S3_BUCKET_NAME=aws-waf-logs-attack-683123960885-ap-northeast-2-an
 S3_REGION=ap-northeast-2
+
+# AWS 자격 증명 (선택사항 - AWS CLI 설정이나 IAM Role 사용 권장)
 
 # AWS 자격 증명 (선택사항 - AWS CLI 설정 사용 가능)
 AWS_ACCESS_KEY_ID=your_access_key

@@ -1,0 +1,142 @@
+.dashboard-container {
+  padding: 1.5rem;
+  min-height: calc(100vh - 60px);
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.5rem;
+  max-width: 1920px;
+  margin: 0 auto;
+}
+
+/* 그리드 패널 크기 */
+.grid-panel {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.grid-panel.small {
+  grid-column: span 3;
+}
+
+.grid-panel.medium {
+  grid-column: span 4;
+}
+
+.grid-panel.large {
+  grid-column: span 6;
+}
+
+.grid-panel.full {
+  grid-column: span 12;
+}
+
+/* 패널 헤더 */
+.panel-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.panel-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.panel-content {
+  position: relative;
+  min-height: 200px;
+}
+
+/* 반응형 그리드 */
+@media (max-width: 1600px) {
+  .grid-panel.small {
+    grid-column: span 4;
+  }
+  
+  .grid-panel.medium {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+  
+  .grid-panel.small,
+  .grid-panel.medium {
+    grid-column: span 6;
+  }
+  
+  .grid-panel.large {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 1rem;
+  }
+  
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .grid-panel.small,
+  .grid-panel.medium,
+  .grid-panel.large,
+  .grid-panel.full {
+    grid-column: span 1;
+  }
+  
+  .panel-content {
+    min-height: 150px;
+  }
+}
+
+/* 로딩 상태 */
+.panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-tertiary);
+}
+
+.panel-loading i {
+  font-size: 2rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 빈 상태 */
+.panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-tertiary);
+  gap: 1rem;
+}
+
+.panel-empty i {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+.panel-empty-text {
+  font-size: 0.875rem;
+}
