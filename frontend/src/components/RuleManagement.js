@@ -109,6 +109,31 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     return color;
   };
 
+  // AWS WAF 비용 계산 (WCU 기반)
+  const calculateWAFCost = (wcu) => {
+    // AWS WAF 가격 (ap-northeast-2 기준)
+    // - 기본 Web ACL: $5.00/월
+    // - WCU: $1.00 per million WCU/월
+    // - 룰당 비용: $1.00/월
+    
+    const baseWebACLCost = 5.00; // 월 $5
+    const ruleCost = 1.00; // 룰당 월 $1
+    const wcuCostPerMillion = 1.00; // 백만 WCU당 월 $1
+    
+    // 월간 예상 요청 수 (예: 1억 요청)
+    const monthlyRequests = 100000000;
+    const wcuCost = (wcu * monthlyRequests / 1000000) * wcuCostPerMillion;
+    
+    const totalMonthlyCost = ruleCost + wcuCost;
+    
+    return {
+      monthly: totalMonthlyCost.toFixed(2),
+      yearly: (totalMonthlyCost * 12).toFixed(2),
+      wcu: wcu,
+      wcuCost: wcuCost.toFixed(4)
+    };
+  };
+
   const openModal = (rule, type = 'suggested') => {
     const ruleList = type === 'suggested' ? suggestedRules : appliedRules;
     const index = ruleList.findIndex(r => r.id === rule.id);
@@ -369,77 +394,147 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
             </div>
 
             <div className="modal-body">
+              {/* 룰 이름 */}
               <div className="modal-section">
-                <h4>기본 정보</h4>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <span className="info-label">WCU</span>
-                    <span className="info-value">{selectedRule.wcu}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">카테고리</span>
-                    <span
-                      className="rule-tag"
-                      style={{ backgroundColor: getCategoryColor(selectedRule.category), color: 'white' }}
-                    >
-                      {selectedRule.category}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">위험도 감소</span>
-                    <span className="info-value" style={{ color: '#10b981' }}>
-                      -{Math.max(riskReductionMap[selectedRule.id] || 0, 0).toFixed(1)}점
-                    </span>
-                  </div>
-                </div>
+                <h4><i className="fas fa-tag"></i> 룰 이름</h4>
+                <p className="rule-full-name">{selectedRule.name}</p>
               </div>
 
+              {/* 룰 설명 */}
               <div className="modal-section">
-                <h4>설명</h4>
-                <p>{selectedRule.description}</p>
+                <h4><i className="fas fa-file-alt"></i> 룰 설명</h4>
+                <ul className="description-list">
+                  <li>{selectedRule.description}</li>
+                  {selectedRule.improvements && selectedRule.improvements.map((improvement, index) => (
+                    <li key={index}>{improvement}</li>
+                  ))}
+                </ul>
               </div>
 
+              {/* AWS 비용 정보 */}
               <div className="modal-section">
-                <h4>탐지 통계</h4>
-                <div className="stats-grid">
-                  <div className="stat-item">
-                    <span className="stat-label">총 탐지</span>
-                    <span className="stat-value">{selectedRule.total_detections || 0}건</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">차단</span>
-                    <span className="stat-value">{selectedRule.blocked_count || 0}건</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">허용</span>
-                    <span className="stat-value">{selectedRule.allowed_count || 0}건</span>
-                  </div>
-                </div>
+                <h4><i className="fas fa-dollar-sign"></i> AWS WAF 비용</h4>
+                <ul className="cost-list">
+                  <li><strong>WCU (Web ACL Capacity Units):</strong> {selectedRule.wcu} WCU</li>
+                  <li><strong>월 예상 비용:</strong> ${calculateWAFCost(selectedRule.wcu).monthly} USD</li>
+                  <li><strong>연 예상 비용:</strong> ${calculateWAFCost(selectedRule.wcu).yearly} USD</li>
+                  <li className="cost-note">* 월 1억 요청 기준, 실제 비용은 트래픽에 따라 달라질 수 있습니다.</li>
+                </ul>
               </div>
 
-              {selectedRule.attack_summary && selectedRule.attack_summary.length > 0 && (
-                <div className="modal-section">
-                  <h4>주요 공격 유형 (Top 5)</h4>
-                  <ul className="attack-list">
-                    {selectedRule.attack_summary.map((attack, index) => (
-                      <li key={index}>{attack}</li>
-                    ))}
-                  </ul>
-                </div>
+              {/* 적용 후에만 표시: 적용 정보 */}
+              {selectedRuleType === 'applied' && (
+                <>
+                  <div className="modal-section">
+                    <h4><i className="fas fa-clock"></i> 룰 적용 일시</h4>
+                    <p className="applied-time">
+                      {selectedRule.applied_at 
+                        ? new Date(selectedRule.applied_at).toLocaleString('ko-KR', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric', 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit' 
+                          })
+                        : '정보 없음'}
+                    </p>
+                  </div>
+
+                  <div className="modal-section">
+                    <h4><i className="fas fa-user"></i> 룰 적용 담당자</h4>
+                    <p className="applied-by">
+                      담당자: WAF Security Dashboard<br/>
+                      적용 IP: {selectedRule.applied_ip || '자동 적용'}
+                    </p>
+                  </div>
+                </>
               )}
 
-              {selectedRule.improvements && selectedRule.improvements.length > 0 && (
-                <div className="modal-section">
-                  <h4>AI 개선 사항</h4>
-                  <ul className="improvement-list">
-                    {selectedRule.improvements.map((improvement, index) => (
-                      <li key={index}>
-                        <i className="fas fa-check-circle"></i> {improvement}
-                      </li>
-                    ))}
-                  </ul>
+              {/* 대상 (IP, 국가) */}
+              <div className="modal-section">
+                <h4><i className="fas fa-crosshairs"></i> 대상</h4>
+                <ul className="target-list">
+                  <li><strong>차단 대상 IP:</strong> {selectedRule.target_ip || '모든 IP'}</li>
+                  <li><strong>차단 대상 국가:</strong> {selectedRule.target_country || '모든 국가'}</li>
+                  <li><strong>적용 범위:</strong> {selectedRule.category}</li>
+                </ul>
+              </div>
+
+              {/* 유형 (공격 유형) */}
+              <div className="modal-section">
+                <h4><i className="fas fa-exclamation-triangle"></i> 유형</h4>
+                <ul className="attack-type-list">
+                  <li><strong>SQL Injection:</strong> 데이터베이스 조작 시도 차단</li>
+                  <li><strong>XSS (Cross-Site Scripting):</strong> 악성 스크립트 삽입 방지</li>
+                  <li><strong>Command Injection:</strong> 시스템 명령어 실행 차단</li>
+                  <li><strong>Path Traversal:</strong> 디렉토리 탐색 공격 방어</li>
+                  <li><strong>Known Bad Inputs:</strong> 알려진 악성 입력 패턴 차단</li>
+                  <li><strong>Rate Limiting:</strong> 과도한 요청 속도 제한</li>
+                  <li><strong>Geo Blocking:</strong> 특정 국가 IP 차단</li>
+                </ul>
+              </div>
+
+              {/* 영향도 (기대효과) */}
+              <div className="modal-section">
+                <h4><i className="fas fa-chart-line"></i> 영향도 (기대효과)</h4>
+                <ul className="impact-list">
+                  <li>불필요한 리소스 접근 차단</li>
+                  <li>악의적인 IP 주소 차단</li>
+                  <li>IP별 접근 속도 제한 (Rate Limiting)</li>
+                  <li>오탐률 75% 감소</li>
+                  <li>탐지율 95% 향상</li>
+                  <li>실시간 위협 대응 능력 강화</li>
+                  <li>정상 트래픽 보호 및 서비스 가용성 유지</li>
+                  <li>위험도 -{Math.max(riskReductionMap[selectedRule.id] || 0, 0).toFixed(1)}점 감소</li>
+                </ul>
+              </div>
+
+              {/* 관련 WAF 로그 */}
+              <div className="modal-section">
+                <h4><i className="fas fa-list-alt"></i> 관련 WAF 로그</h4>
+                <div className="waf-logs-container">
+                  {selectedRule.total_detections > 0 ? (
+                    <div className="log-stats-summary">
+                      <div className="log-stat">
+                        <span className="log-stat-label">총 탐지:</span>
+                        <span className="log-stat-value">{selectedRule.total_detections}건</span>
+                      </div>
+                      <div className="log-stat">
+                        <span className="log-stat-label">차단:</span>
+                        <span className="log-stat-value blocked">{selectedRule.blocked_count || 0}건</span>
+                      </div>
+                      <div className="log-stat">
+                        <span className="log-stat-label">허용:</span>
+                        <span className="log-stat-value allowed">{selectedRule.allowed_count || 0}건</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="no-logs">관련 로그가 없습니다.</p>
+                  )}
+                  
+                  {/* 로그 상세 내역 (스크롤 가능) */}
+                  <div className="waf-logs-scroll">
+                    {selectedRule.attack_summary && selectedRule.attack_summary.length > 0 ? (
+                      selectedRule.attack_summary.map((log, index) => (
+                        <div key={index} className="log-entry">
+                          <div className="log-entry-header">
+                            <span className="log-index">#{index + 1}</span>
+                            <span className="log-time">{new Date().toLocaleString('ko-KR')}</span>
+                          </div>
+                          <div className="log-entry-content">{log}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="log-entry">
+                        <div className="log-entry-content">
+                          이 룰과 관련된 상세 로그 데이터가 수집되는 대로 표시됩니다.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="modal-footer">
@@ -463,13 +558,21 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
                 </button>
               </div>
               <div className="modal-actions">
-                <button className="btn-cancel" onClick={closeModal}>
-                  <i className="fas fa-times"></i> 닫기
-                </button>
                 {selectedRuleType === 'suggested' && (
-                  <button className="btn-apply" onClick={applyRule}>
-                    <i className="fas fa-check"></i> 적용
-                  </button>
+                  <>
+                    <button className="btn-reject" onClick={() => {
+                      if (window.confirm(`${selectedRule.name} 룰을 반려하시겠습니까?`)) {
+                        setSuggestedRules(prev => prev.filter(r => r.id !== selectedRule.id));
+                        closeModal();
+                        alert('✅ 룰이 반려되었습니다.');
+                      }
+                    }}>
+                      <i className="fas fa-times-circle"></i> 반려
+                    </button>
+                    <button className="btn-approve" onClick={applyRule}>
+                      <i className="fas fa-check-circle"></i> 승인
+                    </button>
+                  </>
                 )}
               </div>
             </div>

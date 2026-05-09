@@ -110,7 +110,7 @@ function GeoMap({ data, isDarkMode }) {
   return (
     <div className="chart-wrapper">
       <h2 className="section-title">
-        <i className="fas fa-globe"></i> 지역별 트래픽
+        <i className="fas fa-globe"></i> 글로벌 트래픽
       </h2>
       <div className="card">
         <div className="card-header">

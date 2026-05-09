@@ -50,6 +50,108 @@ WAF_ID     = os.environ.get("WAF_ID",     "db5db7cb-bba8-44df-840f-ae4243dc1d93"
 waf_client = boto3.client("wafv2", region_name=AWS_REGION)
 
 # ==========================================
+# AWS SNS 설정 (Slack 알림용)
+# ==========================================
+SNS_TOPIC_ARN = os.environ.get("SNS_TOPIC_ARN", "")
+ENABLE_SLACK_NOTIFICATIONS = os.environ.get("ENABLE_SLACK_NOTIFICATIONS", "true").lower() == "true"
+
+sns_client = None
+if ENABLE_SLACK_NOTIFICATIONS and SNS_TOPIC_ARN:
+    try:
+        sns_client = boto3.client("sns", region_name=AWS_REGION)
+        print(f"✅ SNS 클라이언트 초기화 완료: {SNS_TOPIC_ARN}")
+    except Exception as e:
+        print(f"⚠️  SNS 클라이언트 초기화 실패: {e}")
+        sns_client = None
+else:
+    print("ℹ️  Slack 알림이 비활성화되어 있습니다.")
+
+# ==========================================
+# SNS 알림 함수 (Slack 연동)
+# ==========================================
+def send_slack_notification(action: str, rule_name: str, details: dict = None):
+    """
+    WAF 룰 변경 시 AWS SNS를 통해 Slack 알림 전송
+    
+    Parameters:
+    - action: 'applied' 또는 'removed'
+    - rule_name: 룰 이름
+    - details: 추가 정보 (priority, timestamp 등)
+    """
+    if not ENABLE_SLACK_NOTIFICATIONS or not sns_client or not SNS_TOPIC_ARN:
+        return False
+    
+    try:
+        # 알림 메시지 구성
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        if action == 'applied':
+            emoji = '✅'
+            action_text = '적용됨'
+            color = 'good'
+        elif action == 'removed':
+            emoji = '🗑️'
+            action_text = '제거됨'
+            color = 'warning'
+        else:
+            emoji = 'ℹ️'
+            action_text = action
+            color = '#439FE0'
+        
+        # 메시지 본문
+        subject = f"{emoji} WAF 룰 {action_text}: {rule_name}"
+        
+        message_lines = [
+            f"*WAF 룰 변경 알림*",
+            f"",
+            f"• *액션*: {action_text}",
+            f"• *룰 이름*: `{rule_name}`",
+            f"• *시간*: {timestamp}",
+            f"• *WAF*: {WAF_NAME}",
+        ]
+        
+        if details:
+            if 'priority' in details:
+                message_lines.append(f"• *Priority*: {details['priority']}")
+            if 'applied_at' in details:
+                message_lines.append(f"• *적용 시간*: {details['applied_at']}")
+        
+        message = '\n'.join(message_lines)
+        
+        # SNS 메시지 속성 (Slack 포맷팅용)
+        message_attributes = {
+            'action': {
+                'DataType': 'String',
+                'StringValue': action
+            },
+            'rule_name': {
+                'DataType': 'String',
+                'StringValue': rule_name
+            },
+            'timestamp': {
+                'DataType': 'String',
+                'StringValue': timestamp
+            }
+        }
+        
+        # SNS로 메시지 발행
+        response = sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message,
+            MessageAttributes=message_attributes
+        )
+        
+        print(f"[SNS] ✅ Slack 알림 전송 완료: {subject} (MessageId: {response['MessageId']})")
+        return True
+        
+    except Exception as e:
+        print(f"[SNS] ⚠️ Slack 알림 전송 실패: {e}")
+        # 알림 실패는 룰 적용/제거 작업을 막지 않음
+        return False
+
+
+# ==========================================
 # UI 룰 이름 → AWS WAF 실제 룰 매핑 테이블
 # "AI-Enhanced-..." 이름을 실제 AWS 구성으로 변환
 # ==========================================
@@ -711,6 +813,18 @@ def apply_rule():
         # ──────────────────────────────────────────────────────────────
 
         print(f"[apply_rule] ✅ AWS WAF 적용 완료: {rule_name} (Priority: {new_priority})")
+        
+        # Slack 알림 전송
+        applied_at = data.get('applied_at', datetime.now().isoformat())
+        send_slack_notification(
+            action='applied',
+            rule_name=rule_name,
+            details={
+                'priority': new_priority,
+                'applied_at': applied_at
+            }
+        )
+        
         return jsonify({'success': True, 'message': f'룰이 AWS WAF에 실제로 적용되었습니다: {rule_name}', 'rule_name': rule_name, 'priority': new_priority})
 
     except ClientError as e:
@@ -756,6 +870,16 @@ def remove_rule():
         # ──────────────────────────────────────────────────────────────
 
         print(f"[remove_rule] ✅ AWS WAF 제거 완료: {rule_name}")
+        
+        # Slack 알림 전송
+        send_slack_notification(
+            action='removed',
+            rule_name=rule_name,
+            details={
+                'removed_at': datetime.now().isoformat()
+            }
+        )
+        
         return jsonify({'success': True, 'message': f'룰이 AWS WAF에서 제거되었습니다: {rule_name}', 'rule_name': rule_name})
 
     except ClientError as e:
@@ -856,7 +980,19 @@ def download_report():
             font_name = 'Helvetica'
 
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        # PDF 파일명 및 제목 생성
+        report_title = f'WAF_로그_및_이벤트_분석_보고서_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        
+        doc = SimpleDocTemplate(
+            buffer, 
+            pagesize=A4, 
+            topMargin=0.5*inch, 
+            bottomMargin=0.5*inch,
+            title=report_title,  # PDF 메타데이터 제목 설정
+            author='WAF Security Dashboard',
+            subject='WAF 로그 및 이벤트 분석 보고서'
+        )
         story = []
         styles = getSampleStyleSheet()
         
@@ -1061,8 +1197,8 @@ def download_report():
         doc.build(story)
         buffer.seek(0)
         
-        # 파일명 생성: WAF_로그_및_이벤트_분석_보고서_YYYYMMDD_HHMMSS.pdf
-        filename = f'WAF_로그_및_이벤트_분석_보고서_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        # 파일명은 이미 위에서 생성한 report_title 사용
+        filename = f'{report_title}.pdf'
         
         # Flask 버전에 따라 download_name 또는 attachment_filename 사용
         try:
