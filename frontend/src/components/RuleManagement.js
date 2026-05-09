@@ -116,7 +116,7 @@ function RuleManagement({ aiRules, attackTypeColors, isDarkMode }) {
     // - WCU: $1.00 per million WCU/월
     // - 룰당 비용: $1.00/월
     
-    const baseWebACLCost = 5.00; // 월 $5
+    //const baseWebACLCost = 5.00; // 월 $5
     const ruleCost = 1.00; // 룰당 월 $1
     const wcuCostPerMillion = 1.00; // 백만 WCU당 월 $1
     
