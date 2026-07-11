@@ -3,6 +3,8 @@
 **AI-driven AWS WAF log analysis and automated rule management.**
 CortexWAF ingests live AWS WAF logs, detects attack patterns, scores risk in real time, and uses an LLM (Amazon Bedrock / Claude) to recommend and apply managed rules — turning raw WAF logs into actionable defense with a human still in the loop.
 
+![CortexWAF project overview](image.png)
+
 <!-- TODO: replace with your own hosted badges or remove -->
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
